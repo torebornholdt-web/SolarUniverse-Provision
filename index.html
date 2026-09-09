@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
-<!-- Solar Universe Cloud v11.3 -->
+<!-- Solar Universe Cloud v11.4 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -759,16 +759,17 @@ async function persistCloudState(){
  for(const a of state.advisors){
    const ar=await cloud.from("advisors").upsert({id:a.id,organization_id:cloudOrgId,name:a.name,active:a.active});
    fail("Berater speichern",ar.error);
-   const hr=await cloud.from("advisor_history").select("id,gross_tier,parent_advisor_id").eq("advisor_id",a.id).is("effective_to",null).order("effective_from",{ascending:false}).limit(1).maybeSingle();
+   const hr=await cloud.from("advisor_history").select("id,effective_from,gross_tier,parent_advisor_id").eq("advisor_id",a.id).is("effective_to",null).order("effective_from",{ascending:false}).limit(1).maybeSingle();
    fail("Beraterhistorie laden",hr.error);
    const h=hr.data;
    if(!h || n(h.gross_tier)!==n(a.stage) || (h.parent_advisor_id||"")!==(a.parentId||"")){
      const today=new Date().toLocaleDateString("sv-SE");
      if(h){
-       const hd=await cloud.from("advisor_history").select("effective_from").eq("id",h.id).single();
-       fail("Beraterhistorie Datum laden",hd.error);
-       if(hd.data?.effective_from===today){
-         const r=await cloud.from("advisor_history").update({gross_tier:a.stage,parent_advisor_id:a.parentId||null}).eq("id",h.id);
+       const effectiveFrom=String(h.effective_from||"").slice(0,10);
+       // A history row created today (or accidentally future-dated) must never be closed with yesterday.
+       // Update it in place instead; otherwise the DB CHECK effective_to >= effective_from would fail.
+       if(!effectiveFrom || effectiveFrom>=today){
+         const r=await cloud.from("advisor_history").update({effective_from:today,gross_tier:a.stage,parent_advisor_id:a.parentId||null,effective_to:null}).eq("id",h.id);
          fail("Beraterhistorie am selben Tag aktualisieren",r.error);
          continue;
        }

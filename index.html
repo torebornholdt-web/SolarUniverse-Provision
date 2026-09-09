@@ -483,7 +483,21 @@ const COSTS=[
 const $=id=>document.getElementById(id);
 const money=n=>new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(Number(n||0));
 const pct=n=>(Number(n||0)*100).toFixed(2).replace(".",",")+" %";
-const uid=p=>p+Math.random().toString(36).slice(2,8).toUpperCase();
+const uid=p=>crypto.randomUUID();
+const isUuid=v=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v||""));
+function normalizeCloudIds(){
+ const advMap=new Map();
+ state.advisors.forEach(a=>{if(!isUuid(a.id)){const old=a.id;a.id=crypto.randomUUID();advMap.set(old,a.id);}});
+ state.advisors.forEach(a=>{if(a.parentId&&advMap.has(a.parentId))a.parentId=advMap.get(a.parentId);});
+ state.customers.forEach(c=>{
+   if(!isUuid(c.id))c.id=crypto.randomUUID();
+   if(c.customerId&&!isUuid(c.customerId))c.customerId=null;
+   if(c.advisorId&&advMap.has(c.advisorId))c.advisorId=advMap.get(c.advisorId);
+   (c.overheadSnapshots||[]).forEach(o=>{if(o.advisorId&&advMap.has(o.advisorId))o.advisorId=advMap.get(o.advisorId);});
+   (c.payments||[]).forEach(x=>{if(!isUuid(x.id))x.id=crypto.randomUUID();if(x.advisorId&&advMap.has(x.advisorId))x.advisorId=advMap.get(x.advisorId);});
+ });
+ if(currentId&&!isUuid(currentId)){const hit=state.customers.find(c=>c.id===currentId);currentId=hit?.id||state.customers[0]?.id||null;}
+}
 
 let state=JSON.parse(localStorage.getItem("su_provision_app")||"null")||{
  settings:{vat:.19,first:.80,max:.33},
@@ -727,6 +741,7 @@ async function loadCloudState(){
 
 async function persistCloudState(){
  if(!cloudReady||!cloudOrgId) return;
+ normalizeCloudIds();
  // Settings
  await cloud.from("app_settings").upsert({organization_id:cloudOrgId,vat_rate:state.settings.vat,first_payout_rate:state.settings.first,max_regular_tier:state.settings.max});
  // Advisors + current history snapshot

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
-<!-- Solar Universe Cloud v12.0 -->
+<!-- Solar Universe Cloud v12.1 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -455,7 +455,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="btn primary" id="saveSettings">Speichern</button>
       </div>
     </section>
-  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.0</span></div>
+  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.1</span></div>
 </main>
 </div>
 
@@ -526,6 +526,8 @@ const advisor=id=>state.advisors.find(a=>a.id===id);
 
 function hierarchy(advisorId){
  let cur=advisor(advisorId),last=cur?.stage||0,out=[],guard=0;
+ // 0 % ist ausdrücklich provisionsfrei: keine Verkäufer- und keine Overhead-Provision.
+ if(!cur || Number(cur.stage||0)===0)return [];
  while(cur?.parentId&&guard++<10){
   const p=advisor(cur.parentId); if(!p)break;
   const diff=Math.max(0,p.stage-last);
@@ -609,16 +611,19 @@ function renderProjectComputed(){
  const c=state.customers.find(x=>x.id===currentId),ec=economy(c,"calc"),ea=economy(c,"actual");
  $("sumVkCalc").textContent=money(ec.vk);$("sumVkActual").textContent=money(ea.vk);$("sumEkCalc").textContent=money(ec.ek);$("sumEkActual").textContent=money(ea.ek);
  $("gpCalc").textContent=money(ec.gp);$("gpActual").textContent=money(ea.gp);$("gpDelta").textContent=money(ea.gp-ec.gp);$("gpDelta").className=(ea.gp-ec.gp)>=0?"positive":"negative";
- const rows=commission(c);$("overheadDisplay").value=(c.overheadSnapshots||[]).map(o=>o.name).join(" → ")||"Kein Overhead";
- $("advisorCommissionRows").innerHTML=rows.map(r=>`<tr><td>${r.name}</td><td>${r.role}</td><td>${pct(r.stage||r.rate)}</td><td><b>${pct(r.rate)}</b></td></tr>`).join("");
- $("commissionRows").innerHTML=rows.map(r=>`<tr><td>${r.name}</td><td>${pct(r.rate)}</td><td>${money(r.grossCalc)}</td><td>${money(r.netCalc)}</td><td>${money(r.gross80)}</td><td>${money(r.net80)}</td><td>${money(r.grossFinal)}</td><td>${money(r.netFinal)}</td><td class="${r.restGross>=0?"positive":"negative"}">${money(r.restGross)}</td><td class="${r.rest>=0?"positive":"negative"}">${money(r.rest)}</td></tr>`).join("");
+ const rows=commission(c);
+ const provisionsfrei=Number(c.stageSnapshot||0)===0;
+ $("overheadDisplay").value=provisionsfrei?"Provisionsfreier Verkauf – kein Overhead":((c.overheadSnapshots||[]).map(o=>o.name).join(" → ")||"Kein Overhead");
+ $("addPayment").disabled=provisionsfrei||rows.length===0;
+ $("advisorCommissionRows").innerHTML=provisionsfrei?`<tr><td>${advisor(c.advisorId)?.name||"Berater"}</td><td>Provisionsfrei</td><td>${pct(0)}</td><td><b>${pct(0)}</b></td></tr>`:rows.map(r=>`<tr><td>${r.name}</td><td>${r.role}</td><td>${pct(r.stage||r.rate)}</td><td><b>${pct(r.rate)}</b></td></tr>`).join("");
+ $("commissionRows").innerHTML=provisionsfrei?`<tr><td>${advisor(c.advisorId)?.name||"Berater"} <span class="muted">(provisionsfrei)</span></td><td>${pct(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td class="positive">${money(0)}</td><td class="positive">${money(0)}</td></tr>`:rows.map(r=>`<tr><td>${r.name}</td><td>${pct(r.rate)}</td><td>${money(r.grossCalc)}</td><td>${money(r.netCalc)}</td><td>${money(r.gross80)}</td><td>${money(r.net80)}</td><td>${money(r.grossFinal)}</td><td>${money(r.netFinal)}</td><td class="${r.restGross>=0?"positive":"negative"}">${money(r.restGross)}</td><td class="${r.rest>=0?"positive":"negative"}">${money(r.rest)}</td></tr>`).join("");
  const s=rows.reduce((a,r)=>Object.fromEntries(Object.keys(a).map(k=>[k,a[k]+(r[k]||0)])),{rate:0,grossCalc:0,netCalc:0,gross80:0,net80:0,grossFinal:0,netFinal:0,restGross:0,rest:0});
  $("commissionFoot").innerHTML=`<tr><th>Gesamt</th><th>${pct(s.rate)}</th><th>${money(s.grossCalc)}</th><th>${money(s.netCalc)}</th><th>${money(s.gross80)}</th><th>${money(s.net80)}</th><th>${money(s.grossFinal)}</th><th>${money(s.netFinal)}</th><th>${money(s.restGross)}</th><th>${money(s.rest)}</th></tr>`;
  $("costSummaryRows").innerHTML=COSTS.map(([k,n])=>{const label=k==="custom"?(c.customCostLabel||"Weitere Kosten"):k==="other"?(c.otherCostLabel||"Sonstiges"):n;return `<tr><td>${label}</td><td>${money(c.calc[k])}</td><td>${money(c.actual[k])}</td><td>${money((c.actual[k]||0)-(c.calc[k]||0))}</td></tr>`}).join("");
 }
 function renderAdvisors(){
  $("advisorRows").innerHTML="";
- state.advisors.forEach(a=>{const tr=document.createElement("tr");tr.innerHTML=`<td><input value="${a.name}"></td><td><select>${[.20,.25,.30,.33,.36,.40].map(x=>`<option value="${x}" ${x===a.stage?"selected":""}>${pct(x)}</option>`).join("")}</select></td><td><select class="parent"><option value="">— keiner —</option>${state.advisors.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${x.id===a.parentId?"selected":""}>${x.name}</option>`).join("")}</select></td><td><input class="activeBox" type="checkbox" ${a.active?"checked":""}></td><td><button class="btn ghost">Löschen</button></td>`;
+ state.advisors.forEach(a=>{const tr=document.createElement("tr");tr.innerHTML=`<td><input value="${a.name}"></td><td><select>${[0,.05,.10,.15,.20,.25,.30,.33,.36,.40].map(x=>`<option value="${x}" ${x===a.stage?"selected":""}>${pct(x)}</option>`).join("")}</select></td><td><select class="parent"><option value="">— keiner —</option>${state.advisors.filter(x=>x.id!==a.id).map(x=>`<option value="${x.id}" ${x.id===a.parentId?"selected":""}>${x.name}</option>`).join("")}</select></td><td><input class="activeBox" type="checkbox" ${a.active?"checked":""}></td><td><button class="btn ghost">Löschen</button></td>`;
  const ins=tr.querySelectorAll("input,select");ins[0].onchange=e=>{a.name=e.target.value;save();renderAll()};ins[1].onchange=e=>{a.stage=+e.target.value;save()};tr.querySelector(".parent").onchange=e=>{a.parentId=e.target.value;save()};tr.querySelector(".activeBox").onchange=e=>{a.active=e.target.checked;save()};tr.querySelector("button").onclick=()=>{if(confirm("Berater löschen?")){state.advisors=state.advisors.filter(x=>x.id!==a.id);save();renderAdvisors()}};$("advisorRows").appendChild(tr)});
 }
 function renderPayments(c){

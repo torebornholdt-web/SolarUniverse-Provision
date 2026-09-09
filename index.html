@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
-<!-- Solar Universe Cloud v11.9 -->
+<!-- Solar Universe Cloud v12.0 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -405,7 +405,7 @@ tbody tr:hover{background:#f9fbfe!important}
           <div class="table-wrap"><table>
             <thead><tr>
               <th>Berater</th><th>Anteil brutto</th><th>Provision brutto kalk.</th><th>Provision netto kalk.</th>
-              <th>80 % brutto</th><th>80 % netto</th><th>Provision brutto final</th><th>Provision netto final</th><th>Rest netto</th>
+              <th>80 % brutto</th><th>80 % netto</th><th>Provision brutto final</th><th>Provision netto final</th><th>Rest brutto</th><th>Rest netto</th>
             </tr></thead>
             <tbody id="commissionRows"></tbody>
             <tfoot id="commissionFoot"></tfoot>
@@ -455,7 +455,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="btn primary" id="saveSettings">Speichern</button>
       </div>
     </section>
-  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v11.9</span></div>
+  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.0</span></div>
 </main>
 </div>
 
@@ -479,7 +479,7 @@ tbody tr:hover{background:#f9fbfe!important}
 
 const COSTS=[
 ["desoha","Desoha UK/Module"],["accomponents","AC-Komponenten"],["dcmontage","DC-Montage"],
-["acmontage","AC-Montage"],["project","Projektierung/Kleinmaterial"],["other","Sonstiges"]
+["acmontage","AC-Montage"],["project","Projektierung/Kleinmaterial"],["custom","Weitere Kosten"],["other","Sonstiges"]
 ];
 const $=id=>document.getElementById(id);
 const money=n=>new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(Number(n||0));
@@ -547,10 +547,13 @@ function commission(c){
  return rows.filter(r=>r.rate>0).map(r=>{
   const grossCalc=ec.gp*r.rate,netCalc=grossCalc/(1+vat),gross80=grossCalc*first,net80=netCalc*first;
   const grossFinal=ea.gp*r.rate,netFinal=grossFinal/(1+vat);
-  const paidNet=(c.payments||[]).filter(p=>p.advisorId===r.advisorId&&isPaidStatus(p.status)).reduce((sum,p)=>sum+(+p.net||0),0);
-  let rest=netFinal-paidNet;
+  const paid=(c.payments||[]).filter(p=>p.advisorId===r.advisorId&&isPaidStatus(p.status));
+  const paidNet=paid.reduce((sum,p)=>sum+(+p.net||0),0);
+  const paidGross=paid.reduce((sum,p)=>sum+(+p.gross||0),0);
+  let rest=netFinal-paidNet,restGross=grossFinal-paidGross;
   if(Math.abs(rest)<=0.011)rest=0;
-  return {...r,grossCalc,netCalc,gross80,net80,grossFinal,netFinal,paidNet,rest}
+  if(Math.abs(restGross)<=0.011)restGross=0;
+  return {...r,grossCalc,netCalc,gross80,net80,grossFinal,netFinal,paidNet,paidGross,restGross,rest}
  });
 }
 function setView(id){
@@ -593,8 +596,13 @@ function renderProject(){
  bindNum("fUpsaleCalc",c.calc,"upsale",renderProjectComputed);bindNum("fUpsaleActual",c.actual,"upsale",renderProjectComputed);
  bindNum("fDiscountCalc",c.calc,"discount",renderProjectComputed);bindNum("fDiscountActual",c.actual,"discount",renderProjectComputed);
  $("costInputs").innerHTML="";
- COSTS.forEach(([k,n])=>{const d=document.createElement("div");d.className="cost-line";d.innerHTML=`<div class="name">${n}</div><div><label>Kalkuliert</label><input type="number" step="0.01" data-s="calc" data-k="${k}" value="${c.calc[k]||0}"></div><div><label>Tatsächlich</label><input type="number" step="0.01" data-s="actual" data-k="${k}" value="${c.actual[k]||0}"></div>`;$("costInputs").appendChild(d)});
- $("costInputs").querySelectorAll("input").forEach(i=>i.oninput=()=>{c[i.dataset.s][i.dataset.k]=+i.value||0;renderProjectComputed()});
+ COSTS.forEach(([k,n])=>{const d=document.createElement("div");d.className="cost-line";
+  const editable=k==="custom"||k==="other";
+  const label=k==="custom"?(c.customCostLabel||""):k==="other"?(c.otherCostLabel||"Sonstiges"):n;
+  const nameHtml=editable?`<div><label>Bezeichnung</label><input type="text" class="cost-label" data-label="${k}" placeholder="${n}" value="${String(label).replace(/&/g,"&amp;").replace(/"/g,"&quot;")}"></div>`:`<div class="name">${n}</div>`;
+  d.innerHTML=`${nameHtml}<div><label>Kalkuliert</label><input type="number" step="0.01" data-s="calc" data-k="${k}" value="${c.calc[k]||0}"></div><div><label>Tatsächlich</label><input type="number" step="0.01" data-s="actual" data-k="${k}" value="${c.actual[k]||0}"></div>`;$("costInputs").appendChild(d)});
+ $("costInputs").querySelectorAll('input[type="number"]').forEach(i=>i.oninput=()=>{c[i.dataset.s][i.dataset.k]=+i.value||0;renderProjectComputed()});
+ $("costInputs").querySelectorAll(".cost-label").forEach(i=>i.oninput=()=>{if(i.dataset.label==="custom")c.customCostLabel=i.value;else c.otherCostLabel=i.value;renderProjectComputed()});
  renderProjectComputed();renderPayments(c);
 }
 function renderProjectComputed(){
@@ -603,10 +611,10 @@ function renderProjectComputed(){
  $("gpCalc").textContent=money(ec.gp);$("gpActual").textContent=money(ea.gp);$("gpDelta").textContent=money(ea.gp-ec.gp);$("gpDelta").className=(ea.gp-ec.gp)>=0?"positive":"negative";
  const rows=commission(c);$("overheadDisplay").value=(c.overheadSnapshots||[]).map(o=>o.name).join(" → ")||"Kein Overhead";
  $("advisorCommissionRows").innerHTML=rows.map(r=>`<tr><td>${r.name}</td><td>${r.role}</td><td>${pct(r.stage||r.rate)}</td><td><b>${pct(r.rate)}</b></td></tr>`).join("");
- $("commissionRows").innerHTML=rows.map(r=>`<tr><td>${r.name}</td><td>${pct(r.rate)}</td><td>${money(r.grossCalc)}</td><td>${money(r.netCalc)}</td><td>${money(r.gross80)}</td><td>${money(r.net80)}</td><td>${money(r.grossFinal)}</td><td>${money(r.netFinal)}</td><td class="${r.rest>=0?"positive":"negative"}">${money(r.rest)}</td></tr>`).join("");
- const s=rows.reduce((a,r)=>Object.fromEntries(Object.keys(a).map(k=>[k,a[k]+(r[k]||0)])),{rate:0,grossCalc:0,netCalc:0,gross80:0,net80:0,grossFinal:0,netFinal:0,rest:0});
- $("commissionFoot").innerHTML=`<tr><th>Gesamt</th><th>${pct(s.rate)}</th><th>${money(s.grossCalc)}</th><th>${money(s.netCalc)}</th><th>${money(s.gross80)}</th><th>${money(s.net80)}</th><th>${money(s.grossFinal)}</th><th>${money(s.netFinal)}</th><th>${money(s.rest)}</th></tr>`;
- $("costSummaryRows").innerHTML=COSTS.map(([k,n])=>`<tr><td>${n}</td><td>${money(c.calc[k])}</td><td>${money(c.actual[k])}</td><td>${money((c.actual[k]||0)-(c.calc[k]||0))}</td></tr>`).join("");
+ $("commissionRows").innerHTML=rows.map(r=>`<tr><td>${r.name}</td><td>${pct(r.rate)}</td><td>${money(r.grossCalc)}</td><td>${money(r.netCalc)}</td><td>${money(r.gross80)}</td><td>${money(r.net80)}</td><td>${money(r.grossFinal)}</td><td>${money(r.netFinal)}</td><td class="${r.restGross>=0?"positive":"negative"}">${money(r.restGross)}</td><td class="${r.rest>=0?"positive":"negative"}">${money(r.rest)}</td></tr>`).join("");
+ const s=rows.reduce((a,r)=>Object.fromEntries(Object.keys(a).map(k=>[k,a[k]+(r[k]||0)])),{rate:0,grossCalc:0,netCalc:0,gross80:0,net80:0,grossFinal:0,netFinal:0,restGross:0,rest:0});
+ $("commissionFoot").innerHTML=`<tr><th>Gesamt</th><th>${pct(s.rate)}</th><th>${money(s.grossCalc)}</th><th>${money(s.netCalc)}</th><th>${money(s.gross80)}</th><th>${money(s.net80)}</th><th>${money(s.grossFinal)}</th><th>${money(s.netFinal)}</th><th>${money(s.restGross)}</th><th>${money(s.rest)}</th></tr>`;
+ $("costSummaryRows").innerHTML=COSTS.map(([k,n])=>{const label=k==="custom"?(c.customCostLabel||"Weitere Kosten"):k==="other"?(c.otherCostLabel||"Sonstiges"):n;return `<tr><td>${label}</td><td>${money(c.calc[k])}</td><td>${money(c.actual[k])}</td><td>${money((c.actual[k]||0)-(c.calc[k]||0))}</td></tr>`}).join("");
 }
 function renderAdvisors(){
  $("advisorRows").innerHTML="";
@@ -741,8 +749,9 @@ async function resolveOrg(){
 function n(v){ return Number(v||0); }
 function mapFinancial(f){
  return {
-  calc:{vk:n(f?.calc_vk),upsale:n(f?.calc_upsale),discount:n(f?.calc_discount),desoha:n(f?.calc_desoha),accomponents:n(f?.calc_ac_components),dcmontage:n(f?.calc_dc_montage),acmontage:n(f?.calc_ac_montage),project:n(f?.calc_project_material),other:n(f?.calc_other)},
-  actual:{vk:n(f?.actual_vk),upsale:n(f?.actual_upsale),discount:n(f?.actual_discount),desoha:n(f?.actual_desoha),accomponents:n(f?.actual_ac_components),dcmontage:n(f?.actual_dc_montage),acmontage:n(f?.actual_ac_montage),project:n(f?.actual_project_material),other:n(f?.actual_other)}
+  calc:{vk:n(f?.calc_vk),upsale:n(f?.calc_upsale),discount:n(f?.calc_discount),desoha:n(f?.calc_desoha),accomponents:n(f?.calc_ac_components),dcmontage:n(f?.calc_dc_montage),acmontage:n(f?.calc_ac_montage),project:n(f?.calc_project_material),custom:n(f?.calc_custom),other:n(f?.calc_other)},
+  actual:{vk:n(f?.actual_vk),upsale:n(f?.actual_upsale),discount:n(f?.actual_discount),desoha:n(f?.actual_desoha),accomponents:n(f?.actual_ac_components),dcmontage:n(f?.actual_dc_montage),acmontage:n(f?.actual_ac_montage),project:n(f?.actual_project_material),custom:n(f?.actual_custom),other:n(f?.actual_other)},
+  customCostLabel:f?.custom_cost_label||"", otherCostLabel:f?.other_cost_label||"Sonstiges"
  };
 }
 async function loadCloudState(){
@@ -779,7 +788,7 @@ async function loadCloudState(){
       overheadSnapshots:(seller?.advisor_id===p.seller_advisor_id)
         ? ps.filter(x=>x.role==="overhead").map(x=>({advisorId:x.advisor_id,name:x.advisor_name_snapshot,stage:n(x.gross_tier_snapshot),rate:n(x.gross_share_snapshot)}))
         : hierarchy(p.seller_advisor_id||""),
-      calc:ff.calc, actual:ff.actual,
+      calc:ff.calc, actual:ff.actual, customCostLabel:ff.customCostLabel, otherCostLabel:ff.otherCostLabel,
       payments:pays.filter(x=>x.project_id===p.id).map(x=>({id:x.id,date:x.payout_date,advisorId:x.advisor_id,advisorName:x.advisor_name_snapshot,type:x.payout_type,gross:n(x.gross_amount),net:n(x.net_amount),status:x.status}))
     };
   });
@@ -885,8 +894,8 @@ async function persistCloudState(){
      }
 
      const financialRow={
-      project_id:c.id,calc_vk:c.calc.vk,calc_upsale:c.calc.upsale,calc_discount:c.calc.discount,calc_desoha:c.calc.desoha,calc_ac_components:c.calc.accomponents,calc_dc_montage:c.calc.dcmontage,calc_ac_montage:c.calc.acmontage,calc_project_material:c.calc.project,calc_other:c.calc.other,
-      actual_vk:c.actual.vk,actual_upsale:c.actual.upsale,actual_discount:c.actual.discount,actual_desoha:c.actual.desoha,actual_ac_components:c.actual.accomponents,actual_dc_montage:c.actual.dcmontage,actual_ac_montage:c.actual.acmontage,actual_project_material:c.actual.project,actual_other:c.actual.other
+      project_id:c.id,calc_vk:c.calc.vk,calc_upsale:c.calc.upsale,calc_discount:c.calc.discount,calc_desoha:c.calc.desoha,calc_ac_components:c.calc.accomponents,calc_dc_montage:c.calc.dcmontage,calc_ac_montage:c.calc.acmontage,calc_project_material:c.calc.project,calc_custom:c.calc.custom||0,calc_other:c.calc.other,
+      actual_vk:c.actual.vk,actual_upsale:c.actual.upsale,actual_discount:c.actual.discount,actual_desoha:c.actual.desoha,actual_ac_components:c.actual.accomponents,actual_dc_montage:c.actual.dcmontage,actual_ac_montage:c.actual.acmontage,actual_project_material:c.actual.project,actual_custom:c.actual.custom||0,actual_other:c.actual.other,custom_cost_label:c.customCostLabel||"",other_cost_label:c.otherCostLabel||"Sonstiges"
      };
      let fr;
      if(existingFinancialMap.has(c.id)){

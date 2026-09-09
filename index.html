@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
-<!-- Solar Universe Cloud v11.6 -->
+<!-- Solar Universe Cloud v11.7 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -625,7 +625,16 @@ $("backCustomers").onclick=()=>{setView("customers");renderCustomers()};
 $("saveProject").onclick=()=>{save();renderAll();alert("Projekt gespeichert")};
 $("duplicateProject").onclick=()=>{const c=state.customers.find(x=>x.id===currentId),copy=JSON.parse(JSON.stringify(c));copy.id=uid("C");copy.projectNo=c.projectNo+"-KOPIE";copy.projectName=c.projectName+" (Kopie)";copy.payments=[];state.customers.push(copy);save();openProject(copy.id)};
 $("newAdvisor").onclick=()=>{state.advisors.push({id:uid("A"),name:"Neuer Berater",stage:.20,parentId:"",active:true});save();renderAdvisors()};
-$("saveSettings").onclick=()=>{state.settings.vat=+$("sVat").value;state.settings.first=+$("sFirst").value;state.settings.max=+$("sMax").value;save();alert("Einstellungen gespeichert");if(currentId)renderProjectComputed()};
+$("saveSettings").onclick=async()=>{
+ if(cloudReady && cloudRole!=="admin"){ alert("Einstellungen dürfen nur von einem Administrator geändert werden."); renderSettings(); return; }
+ state.settings.vat=+$("sVat").value;state.settings.first=+$("sFirst").value;state.settings.max=+$("sMax").value;
+ saveLocal();
+ if(cloudReady){
+   const {error}=await cloud.from("app_settings").upsert({organization_id:cloudOrgId,vat_rate:state.settings.vat,first_payout_rate:state.settings.first,max_regular_tier:state.settings.max});
+   if(error){ alert("Einstellungen konnten nicht gespeichert werden: "+error.message); return; }
+ }
+ alert("Einstellungen gespeichert");if(currentId)renderProjectComputed()
+};
 $("addPayment").onclick=()=>{const c=state.customers.find(x=>x.id===currentId);$("pAdvisor").innerHTML=commission(c).map(r=>`<option value="${r.advisorId}">${r.name}</option>`).join("");$("pDate").value=new Date().toISOString().slice(0,10);$("pType").value="80 % Abschlag";$("pStatus").value="Offen";$("pGross").value=0;$("pNet").value=0;$("paymentModal").classList.remove("hidden")};
 $("closePayment").onclick=()=>$("paymentModal").classList.add("hidden");
 $("pGross").oninput=()=>{$("pNet").value=(+$("pGross").value/(1+state.settings.vat)).toFixed(2)};
@@ -691,6 +700,8 @@ async function resolveOrg(){
   if(!data) throw new Error("Dieser Benutzer ist noch nicht für Solar Universe freigeschaltet.");
   cloudOrgId=data.organization_id;
   cloudRole=data.role;
+  const settingsNav=document.querySelector('.side-nav button[data-view="settings"]');
+  if(settingsNav) settingsNav.style.display=(cloudRole==="admin"?"":"none");
   return data;
 }
 
@@ -748,11 +759,8 @@ async function persistCloudState(){
  normalizeCloudIds();
  const fail=(label,error)=>{ if(error) throw new Error(label+": "+error.message); };
 
- // Settings are admin-only. Members may use the shared settings but cannot change them.
- if(cloudRole==="admin"){
-   const {error}=await cloud.from("app_settings").upsert({organization_id:cloudOrgId,vat_rate:state.settings.vat,first_payout_rate:state.settings.first,max_regular_tier:state.settings.max});
-   fail("Einstellungen",error);
- }
+ // Global settings are NOT written during normal project/customer saves.
+ // They are saved only from the dedicated admin settings action.
 
  // Advisors + current history snapshot
  const advRes=await cloud.from("advisors").select("id").eq("organization_id",cloudOrgId);

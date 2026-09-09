@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
-<!-- Solar Universe Cloud v11.5 -->
+<!-- Solar Universe Cloud v11.6 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -675,6 +675,7 @@ const SUPABASE_URL = "https://fbqxgrqlwzznkpwnakvu.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_s-04MbC447p9zCe0EXHKLw_KZqpZcn6";
 const cloud = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 let cloudOrgId = null;
+let cloudRole = null;
 let cloudReady = false;
 let cloudSaveTimer = null;
 
@@ -689,6 +690,7 @@ async function resolveOrg(){
   if(error) throw error;
   if(!data) throw new Error("Dieser Benutzer ist noch nicht für Solar Universe freigeschaltet.");
   cloudOrgId=data.organization_id;
+  cloudRole=data.role;
   return data;
 }
 
@@ -721,11 +723,12 @@ async function loadCloudState(){
   const snaps=snapR.data||[], pays=payR.data||[], custMap=new Map((custR.data||[]).map(x=>[x.id,x]));
   state.customers=(projR.data||[]).map(p=>{
     const cu=custMap.get(p.customer_id)||{};
-    const ff=mapFinancial(fins.get(p.id));
+    const finRow=fins.get(p.id);
+    const ff=mapFinancial(finRow);
     const ps=snaps.filter(x=>x.project_id===p.id);
     const seller=ps.find(x=>x.role==="seller");
     return {
-      id:p.id, customer:cu.name||"", customerId:p.customer_id, projectNo:p.project_no, projectName:p.project_name,
+      id:p.id, customer:cu.name||"", customerId:p.customer_id, customerVersion:n(cu.row_version)||1, projectVersion:n(p.row_version)||1, financialVersion:n(finRow?.row_version)||1, projectNo:p.project_no, projectName:p.project_name,
       kwp:n(p.kwp), modules:p.modules||"", inverter:p.inverter||"", storage:p.storage||"", wallbox:p.wallbox||"Nein",
       date:p.order_date||"", status:p.status||"Kalkulation", notes:p.notes||"", advisorId:p.seller_advisor_id||"",
       stageSnapshot:n(seller?.gross_tier_snapshot),
@@ -745,8 +748,8 @@ async function persistCloudState(){
  normalizeCloudIds();
  const fail=(label,error)=>{ if(error) throw new Error(label+": "+error.message); };
 
- // Settings
- {
+ // Settings are admin-only. Members may use the shared settings but cannot change them.
+ if(cloudRole==="admin"){
    const {error}=await cloud.from("app_settings").upsert({organization_id:cloudOrgId,vat_rate:state.settings.vat,first_payout_rate:state.settings.first,max_regular_tier:state.settings.max});
    fail("Einstellungen",error);
  }
@@ -792,10 +795,16 @@ async function persistCloudState(){
  }
 
  // Projects/customers. A project is only considered saved after the project row exists.
- const epRes=await cloud.from("projects").select("id,customer_id").eq("organization_id",cloudOrgId).is("archived_at",null);
- fail("Projekte laden",epRes.error);
+ const [epRes,ecRes,efRes]=await Promise.all([
+   cloud.from("projects").select("id,customer_id,row_version").eq("organization_id",cloudOrgId).is("archived_at",null),
+   cloud.from("customers").select("id,row_version").eq("organization_id",cloudOrgId).is("archived_at",null),
+   cloud.from("project_financials").select("project_id,row_version")
+ ]);
+ fail("Projekte laden",epRes.error); fail("Kundenstände laden",ecRes.error); fail("Finanzstände laden",efRes.error);
  const existingProjects=epRes.data||[];
  const existingProjectMap=new Map(existingProjects.map(p=>[p.id,p]));
+ const existingCustomerMap=new Map((ecRes.data||[]).map(x=>[x.id,x]));
+ const existingFinancialMap=new Map((efRes.data||[]).map(x=>[x.project_id,x]));
  const wantedProjects=new Set(state.customers.map(c=>c.id));
 
  for(const c of state.customers){
@@ -803,28 +812,51 @@ async function persistCloudState(){
    let createdCustomerId=null;
    try{
      if(!customerId){
-       const cu=await cloud.from("customers").insert({organization_id:cloudOrgId,name:c.customer,notes:c.notes||null}).select("id").single();
+       const cu=await cloud.from("customers").insert({organization_id:cloudOrgId,name:c.customer,notes:c.notes||null}).select("id,row_version").single();
        fail("Kunde anlegen",cu.error);
        customerId=cu.data.id;
        createdCustomerId=customerId;
        c.customerId=customerId;
+       c.customerVersion=n(cu.data.row_version)||1;
        saveLocal();
      } else {
-       const cu=await cloud.from("customers").update({name:c.customer,notes:c.notes||null,archived_at:null}).eq("id",customerId);
+       const expected=n(c.customerVersion)||n(existingCustomerMap.get(customerId)?.row_version)||1;
+       const cu=await cloud.from("customers").update({name:c.customer,notes:c.notes||null,archived_at:null}).eq("id",customerId).eq("row_version",expected).select("row_version");
        fail("Kunde aktualisieren",cu.error);
+       if(!(cu.data||[]).length) throw new Error("Kunde wurde zwischenzeitlich von einem anderen Benutzer geändert. Bitte neu laden und erneut bearbeiten.");
+       c.customerVersion=n(cu.data[0].row_version);
      }
 
      const projectRow={id:c.id,organization_id:cloudOrgId,customer_id:customerId,project_no:c.projectNo,project_name:c.projectName,order_date:c.date||null,status:c.status,kwp:c.kwp||0,modules:c.modules||null,inverter:c.inverter||null,storage:c.storage||null,wallbox:c.wallbox||null,notes:c.notes||null,seller_advisor_id:c.advisorId||null,archived_at:null};
      let pr;
-     if(existingProjectMap.has(c.id)) pr=await cloud.from("projects").update(projectRow).eq("id",c.id);
-     else pr=await cloud.from("projects").insert(projectRow);
-     fail("Projekt speichern",pr.error);
+     if(existingProjectMap.has(c.id)){
+       const expected=n(c.projectVersion)||n(existingProjectMap.get(c.id)?.row_version)||1;
+       pr=await cloud.from("projects").update(projectRow).eq("id",c.id).eq("row_version",expected).select("row_version");
+       fail("Projekt speichern",pr.error);
+       if(!(pr.data||[]).length) throw new Error("Projekt wurde zwischenzeitlich von einem anderen Benutzer geändert. Bitte neu laden und erneut bearbeiten.");
+       c.projectVersion=n(pr.data[0].row_version);
+     } else {
+       pr=await cloud.from("projects").insert(projectRow).select("row_version").single();
+       fail("Projekt speichern",pr.error);
+       c.projectVersion=n(pr.data?.row_version)||1;
+     }
 
-     const fr=await cloud.from("project_financials").upsert({
+     const financialRow={
       project_id:c.id,calc_vk:c.calc.vk,calc_upsale:c.calc.upsale,calc_discount:c.calc.discount,calc_desoha:c.calc.desoha,calc_ac_components:c.calc.accomponents,calc_dc_montage:c.calc.dcmontage,calc_ac_montage:c.calc.acmontage,calc_project_material:c.calc.project,calc_other:c.calc.other,
       actual_vk:c.actual.vk,actual_upsale:c.actual.upsale,actual_discount:c.actual.discount,actual_desoha:c.actual.desoha,actual_ac_components:c.actual.accomponents,actual_dc_montage:c.actual.dcmontage,actual_ac_montage:c.actual.acmontage,actual_project_material:c.actual.project,actual_other:c.actual.other
-     });
-     fail("Projektdaten speichern",fr.error);
+     };
+     let fr;
+     if(existingFinancialMap.has(c.id)){
+       const expected=n(c.financialVersion)||n(existingFinancialMap.get(c.id)?.row_version)||1;
+       fr=await cloud.from("project_financials").update(financialRow).eq("project_id",c.id).eq("row_version",expected).select("row_version");
+       fail("Projektdaten speichern",fr.error);
+       if(!(fr.data||[]).length) throw new Error("Kalkulationsdaten wurden zwischenzeitlich von einem anderen Benutzer geändert. Bitte neu laden.");
+       c.financialVersion=n(fr.data[0].row_version);
+     } else {
+       fr=await cloud.from("project_financials").insert(financialRow).select("row_version").single();
+       fail("Projektdaten speichern",fr.error);
+       c.financialVersion=n(fr.data?.row_version)||1;
+     }
 
      // Commission snapshots are historical and immutable: create them only once.
      const sr=await cloud.from("project_commission_snapshots").select("id").eq("project_id",c.id).limit(1);
@@ -875,6 +907,7 @@ async function persistCloudState(){
 save=()=>{
  saveLocal();
  if(!cloudReady)return;
+ if(cloudRole==="viewer"){ console.warn("Nur Leserechte: Änderungen werden nicht in die Cloud geschrieben."); return; }
  clearTimeout(cloudSaveTimer);
  cloudSaveTimer=setTimeout(()=>persistCloudState().catch(e=>{console.error(e);alert("Cloud-Speicherung fehlgeschlagen: "+e.message)}),350);
 };
@@ -920,7 +953,7 @@ async function finishPasswordRecovery(){
 document.getElementById("loginBtn").onclick=()=>cloudLogin(false);
 document.getElementById("signupBtn").onclick=()=>cloudLogin(true);
 document.getElementById("resetBtn").onclick=requestPasswordReset;
-document.getElementById("cloudLogout").onclick=async()=>{await cloud.auth.signOut();cloudReady=false;showLogin(true);};
+document.getElementById("cloudLogout").onclick=async()=>{await cloud.auth.signOut();cloudReady=false;cloudRole=null;showLogin(true);};
 cloud.auth.onAuthStateChange((event,session)=>{ if(event==="SIGNED_OUT")showLogin(true); if(event==="PASSWORD_RECOVERY") setTimeout(finishPasswordRecovery,0); });
 startCloudApp();
 </script>

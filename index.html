@@ -219,7 +219,7 @@ tbody tr:hover{background:#f9fbfe!important}
 .login-card p{color:#71819a;line-height:1.5}
 .login-card label{display:block;margin:14px 0 6px;font-weight:700;color:#10264b}
 .login-card input{width:100%;box-sizing:border-box;padding:12px}
-.login-actions{display:flex;gap:10px;margin-top:18px}
+.login-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
 .login-actions button{flex:1}
 #loginMsg{min-height:22px;margin-top:12px;font-size:14px}
 #cloudUser{font-size:12px;color:#fff;opacity:.9;margin:8px 12px}
@@ -241,6 +241,7 @@ tbody tr:hover{background:#f9fbfe!important}
     <div class="login-actions">
       <button class="btn primary" id="loginBtn">Anmelden</button>
       <button class="btn ghost" id="signupBtn">Erstzugang</button>
+      <button class="btn ghost" id="resetBtn" type="button">Passwort vergessen</button>
     </div>
     <div id="loginMsg"></div>
   </div>
@@ -688,8 +689,8 @@ async function loadCloudState(){
   const [advR,histR,custR,projR,finR,snapR,payR,setR] = await Promise.all([
     cloud.from("advisors").select("*").eq("organization_id",cloudOrgId).order("created_at"),
     cloud.from("advisor_history").select("*"),
-    cloud.from("customers").select("*").eq("organization_id",cloudOrgId).order("created_at"),
-    cloud.from("projects").select("*").eq("organization_id",cloudOrgId).order("created_at"),
+    cloud.from("customers").select("*").eq("organization_id",cloudOrgId).is("archived_at",null).order("created_at"),
+    cloud.from("projects").select("*").eq("organization_id",cloudOrgId).is("archived_at",null).order("created_at"),
     cloud.from("project_financials").select("*"),
     cloud.from("project_commission_snapshots").select("*").order("hierarchy_level"),
     cloud.from("payouts").select("*").order("payout_date"),
@@ -739,10 +740,10 @@ async function persistCloudState(){
      await cloud.from("advisor_history").insert({advisor_id:a.id,effective_from:new Date().toISOString().slice(0,10),gross_tier:a.stage,parent_advisor_id:a.parentId||null});
    }
  }
- for(const a of existingAdv) if(!wantedAdv.has(a.id)) await cloud.from("advisors").delete().eq("id",a.id);
+ for(const a of existingAdv) if(!wantedAdv.has(a.id)) await cloud.from("advisors").update({active:false,deactivated_at:new Date().toISOString()}).eq("id",a.id);
 
  // Projects/customers. One customer row per current app project for compatibility.
- const existingProjects=(await cloud.from("projects").select("id,customer_id").eq("organization_id",cloudOrgId)).data||[];
+ const existingProjects=(await cloud.from("projects").select("id,customer_id").eq("organization_id",cloudOrgId).is("archived_at",null)).data||[];
  const wantedProjects=new Set(state.customers.map(c=>c.id));
  for(const c of state.customers){
    let customerId=c.customerId;
@@ -757,17 +758,33 @@ async function persistCloudState(){
     project_id:c.id,calc_vk:c.calc.vk,calc_upsale:c.calc.upsale,calc_discount:c.calc.discount,calc_desoha:c.calc.desoha,calc_ac_components:c.calc.accomponents,calc_dc_montage:c.calc.dcmontage,calc_ac_montage:c.calc.acmontage,calc_project_material:c.calc.project,calc_other:c.calc.other,
     actual_vk:c.actual.vk,actual_upsale:c.actual.upsale,actual_discount:c.actual.discount,actual_desoha:c.actual.desoha,actual_ac_components:c.actual.accomponents,actual_dc_montage:c.actual.dcmontage,actual_ac_montage:c.actual.acmontage,actual_project_material:c.actual.project,actual_other:c.actual.other
    });
-   await cloud.from("project_commission_snapshots").delete().eq("project_id",c.id);
-   const rows=[{project_id:c.id,advisor_id:c.advisorId||null,advisor_name_snapshot:advisor(c.advisorId)?.name||"",role:"seller",gross_tier_snapshot:c.stageSnapshot||0,gross_share_snapshot:c.stageSnapshot||0,hierarchy_level:0}]
-     .concat((c.overheadSnapshots||[]).map((o,i)=>({project_id:c.id,advisor_id:o.advisorId||null,advisor_name_snapshot:o.name,role:"overhead",gross_tier_snapshot:o.stage||0,gross_share_snapshot:o.rate||0,hierarchy_level:i+1})));
-   if(rows.length) await cloud.from("project_commission_snapshots").insert(rows);
-   await cloud.from("payouts").delete().eq("project_id",c.id);
-   if((c.payments||[]).length) await cloud.from("payouts").insert(c.payments.map(p=>({id:p.id,project_id:c.id,advisor_id:p.advisorId||null,advisor_name_snapshot:p.advisorName,payout_date:p.date,payout_type:p.type,gross_amount:p.gross,net_amount:p.net,status:p.status})));
+   // Commission snapshots are historical and immutable: create them only once.
+   const {data:existingSnaps,error:snapReadError}=await cloud.from("project_commission_snapshots").select("id").eq("project_id",c.id).limit(1);
+   if(snapReadError) throw snapReadError;
+   if(!(existingSnaps||[]).length){
+     const rows=[{project_id:c.id,advisor_id:c.advisorId||null,advisor_name_snapshot:advisor(c.advisorId)?.name||"",role:"seller",gross_tier_snapshot:c.stageSnapshot||0,gross_share_snapshot:c.stageSnapshot||0,hierarchy_level:0}]
+       .concat((c.overheadSnapshots||[]).map((o,i)=>({project_id:c.id,advisor_id:o.advisorId||null,advisor_name_snapshot:o.name,role:"overhead",gross_tier_snapshot:o.stage||0,gross_share_snapshot:o.rate||0,hierarchy_level:i+1})));
+     if(rows.length){ const {error}=await cloud.from("project_commission_snapshots").insert(rows); if(error) throw error; }
+   }
+   // Synchronize payouts row-by-row. Paid payouts are never changed or deleted.
+   const {data:existingPays,error:payReadError}=await cloud.from("payouts").select("id,status").eq("project_id",c.id);
+   if(payReadError) throw payReadError;
+   const payMap=new Map((existingPays||[]).map(x=>[x.id,x]));
+   const wantedPayIds=new Set((c.payments||[]).map(p=>p.id));
+   for(const p of (c.payments||[])){
+     const row={id:p.id,project_id:c.id,advisor_id:p.advisorId||null,advisor_name_snapshot:p.advisorName,payout_date:p.date,payout_type:p.type,gross_amount:p.gross,net_amount:p.net,status:p.status};
+     const oldPay=payMap.get(p.id);
+     if(!oldPay){ const {error}=await cloud.from("payouts").insert(row); if(error) throw error; }
+     else if(oldPay.status!=="Bezahlt"){ const {error}=await cloud.from("payouts").update(row).eq("id",p.id); if(error) throw error; }
+   }
+   for(const oldPay of (existingPays||[])){
+     if(!wantedPayIds.has(oldPay.id) && oldPay.status!=="Bezahlt"){ const {error}=await cloud.from("payouts").delete().eq("id",oldPay.id); if(error) throw error; }
+   }
  }
  for(const p of existingProjects){
    if(!wantedProjects.has(p.id)){
-     await cloud.from("projects").delete().eq("id",p.id);
-     await cloud.from("customers").delete().eq("id",p.customer_id);
+     await cloud.from("projects").update({archived_at:new Date().toISOString()}).eq("id",p.id);
+     await cloud.from("customers").update({archived_at:new Date().toISOString()}).eq("id",p.customer_id);
    }
  }
  saveLocal();
@@ -802,10 +819,27 @@ async function startCloudApp(){
    showLogin(false);
  }catch(e){console.error(e);loginMessage(e.message,true);showLogin(true);}
 }
+async function requestPasswordReset(){
+ const email=document.getElementById("loginEmail").value.trim();
+ if(!email){loginMessage("Bitte zuerst deine E-Mail-Adresse eingeben.",true);return;}
+ loginMessage("Reset-Link wird versendet …");
+ const {error}=await cloud.auth.resetPasswordForEmail(email,{redirectTo:"https://torebornholdt-web.github.io/SolarUniverse-Provision/"});
+ if(error){loginMessage(error.message,true);return;}
+ loginMessage("E-Mail zum Zurücksetzen des Passworts wurde versendet.");
+}
+async function finishPasswordRecovery(){
+ const password=window.prompt("Neues Passwort eingeben (mindestens 8 Zeichen):");
+ if(!password) return;
+ if(password.length<8){alert("Das Passwort muss mindestens 8 Zeichen lang sein.");return;}
+ const {error}=await cloud.auth.updateUser({password});
+ if(error){alert("Passwort konnte nicht geändert werden: "+error.message);return;}
+ alert("Passwort wurde geändert.");
+}
 document.getElementById("loginBtn").onclick=()=>cloudLogin(false);
 document.getElementById("signupBtn").onclick=()=>cloudLogin(true);
+document.getElementById("resetBtn").onclick=requestPasswordReset;
 document.getElementById("cloudLogout").onclick=async()=>{await cloud.auth.signOut();cloudReady=false;showLogin(true);};
-cloud.auth.onAuthStateChange((event,session)=>{ if(event==="SIGNED_OUT")showLogin(true); });
+cloud.auth.onAuthStateChange((event,session)=>{ if(event==="SIGNED_OUT")showLogin(true); if(event==="PASSWORD_RECOVERY") setTimeout(finishPasswordRecovery,0); });
 startCloudApp();
 </script>
 

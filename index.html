@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
+<!-- Solar Universe Cloud v11.2 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -742,64 +743,117 @@ async function loadCloudState(){
 async function persistCloudState(){
  if(!cloudReady||!cloudOrgId) return;
  normalizeCloudIds();
+ const fail=(label,error)=>{ if(error) throw new Error(label+": "+error.message); };
+
  // Settings
- await cloud.from("app_settings").upsert({organization_id:cloudOrgId,vat_rate:state.settings.vat,first_payout_rate:state.settings.first,max_regular_tier:state.settings.max});
+ {
+   const {error}=await cloud.from("app_settings").upsert({organization_id:cloudOrgId,vat_rate:state.settings.vat,first_payout_rate:state.settings.first,max_regular_tier:state.settings.max});
+   fail("Einstellungen",error);
+ }
+
  // Advisors + current history snapshot
- const existingAdv=(await cloud.from("advisors").select("id").eq("organization_id",cloudOrgId)).data||[];
+ const advRes=await cloud.from("advisors").select("id").eq("organization_id",cloudOrgId);
+ fail("Berater laden",advRes.error);
+ const existingAdv=advRes.data||[];
  const wantedAdv=new Set(state.advisors.map(a=>a.id));
  for(const a of state.advisors){
-   await cloud.from("advisors").upsert({id:a.id,organization_id:cloudOrgId,name:a.name,active:a.active});
-   const {data:h}=await cloud.from("advisor_history").select("id,gross_tier,parent_advisor_id").eq("advisor_id",a.id).is("effective_to",null).order("effective_from",{ascending:false}).limit(1).maybeSingle();
+   const ar=await cloud.from("advisors").upsert({id:a.id,organization_id:cloudOrgId,name:a.name,active:a.active});
+   fail("Berater speichern",ar.error);
+   const hr=await cloud.from("advisor_history").select("id,gross_tier,parent_advisor_id").eq("advisor_id",a.id).is("effective_to",null).order("effective_from",{ascending:false}).limit(1).maybeSingle();
+   fail("Beraterhistorie laden",hr.error);
+   const h=hr.data;
    if(!h || n(h.gross_tier)!==n(a.stage) || (h.parent_advisor_id||"")!==(a.parentId||"")){
-     if(h) await cloud.from("advisor_history").update({effective_to:new Date(Date.now()-86400000).toISOString().slice(0,10)}).eq("id",h.id);
-     await cloud.from("advisor_history").insert({advisor_id:a.id,effective_from:new Date().toISOString().slice(0,10),gross_tier:a.stage,parent_advisor_id:a.parentId||null});
+     if(h){
+       const r=await cloud.from("advisor_history").update({effective_to:new Date(Date.now()-86400000).toISOString().slice(0,10)}).eq("id",h.id);
+       fail("Beraterhistorie abschließen",r.error);
+     }
+     const r=await cloud.from("advisor_history").insert({advisor_id:a.id,effective_from:new Date().toISOString().slice(0,10),gross_tier:a.stage,parent_advisor_id:a.parentId||null});
+     fail("Beraterhistorie speichern",r.error);
    }
  }
- for(const a of existingAdv) if(!wantedAdv.has(a.id)) await cloud.from("advisors").update({active:false,deactivated_at:new Date().toISOString()}).eq("id",a.id);
+ for(const a of existingAdv){
+   if(!wantedAdv.has(a.id)){
+     const r=await cloud.from("advisors").update({active:false,deactivated_at:new Date().toISOString()}).eq("id",a.id);
+     fail("Berater deaktivieren",r.error);
+   }
+ }
 
- // Projects/customers. One customer row per current app project for compatibility.
- const existingProjects=(await cloud.from("projects").select("id,customer_id").eq("organization_id",cloudOrgId).is("archived_at",null)).data||[];
+ // Projects/customers. A project is only considered saved after the project row exists.
+ const epRes=await cloud.from("projects").select("id,customer_id").eq("organization_id",cloudOrgId).is("archived_at",null);
+ fail("Projekte laden",epRes.error);
+ const existingProjects=epRes.data||[];
+ const existingProjectMap=new Map(existingProjects.map(p=>[p.id,p]));
  const wantedProjects=new Set(state.customers.map(c=>c.id));
+
  for(const c of state.customers){
    let customerId=c.customerId;
-   if(!customerId){
-     const {data:cu,error}=await cloud.from("customers").insert({organization_id:cloudOrgId,name:c.customer}).select("id").single();
-     if(error) throw error; customerId=cu.id; c.customerId=customerId;
-   } else {
-     await cloud.from("customers").update({name:c.customer,notes:c.notes||null}).eq("id",customerId);
-   }
-   await cloud.from("projects").upsert({id:c.id,organization_id:cloudOrgId,customer_id:customerId,project_no:c.projectNo,project_name:c.projectName,order_date:c.date||null,status:c.status,kwp:c.kwp||0,modules:c.modules||null,inverter:c.inverter||null,storage:c.storage||null,wallbox:c.wallbox||null,notes:c.notes||null,seller_advisor_id:c.advisorId||null});
-   await cloud.from("project_financials").upsert({
-    project_id:c.id,calc_vk:c.calc.vk,calc_upsale:c.calc.upsale,calc_discount:c.calc.discount,calc_desoha:c.calc.desoha,calc_ac_components:c.calc.accomponents,calc_dc_montage:c.calc.dcmontage,calc_ac_montage:c.calc.acmontage,calc_project_material:c.calc.project,calc_other:c.calc.other,
-    actual_vk:c.actual.vk,actual_upsale:c.actual.upsale,actual_discount:c.actual.discount,actual_desoha:c.actual.desoha,actual_ac_components:c.actual.accomponents,actual_dc_montage:c.actual.dcmontage,actual_ac_montage:c.actual.acmontage,actual_project_material:c.actual.project,actual_other:c.actual.other
-   });
-   // Commission snapshots are historical and immutable: create them only once.
-   const {data:existingSnaps,error:snapReadError}=await cloud.from("project_commission_snapshots").select("id").eq("project_id",c.id).limit(1);
-   if(snapReadError) throw snapReadError;
-   if(!(existingSnaps||[]).length){
-     const rows=[{project_id:c.id,advisor_id:c.advisorId||null,advisor_name_snapshot:advisor(c.advisorId)?.name||"",role:"seller",gross_tier_snapshot:c.stageSnapshot||0,gross_share_snapshot:c.stageSnapshot||0,hierarchy_level:0}]
-       .concat((c.overheadSnapshots||[]).map((o,i)=>({project_id:c.id,advisor_id:o.advisorId||null,advisor_name_snapshot:o.name,role:"overhead",gross_tier_snapshot:o.stage||0,gross_share_snapshot:o.rate||0,hierarchy_level:i+1})));
-     if(rows.length){ const {error}=await cloud.from("project_commission_snapshots").insert(rows); if(error) throw error; }
-   }
-   // Synchronize payouts row-by-row. Paid payouts are never changed or deleted.
-   const {data:existingPays,error:payReadError}=await cloud.from("payouts").select("id,status").eq("project_id",c.id);
-   if(payReadError) throw payReadError;
-   const payMap=new Map((existingPays||[]).map(x=>[x.id,x]));
-   const wantedPayIds=new Set((c.payments||[]).map(p=>p.id));
-   for(const p of (c.payments||[])){
-     const row={id:p.id,project_id:c.id,advisor_id:p.advisorId||null,advisor_name_snapshot:p.advisorName,payout_date:p.date,payout_type:p.type,gross_amount:p.gross,net_amount:p.net,status:p.status};
-     const oldPay=payMap.get(p.id);
-     if(!oldPay){ const {error}=await cloud.from("payouts").insert(row); if(error) throw error; }
-     else if(oldPay.status!=="Bezahlt"){ const {error}=await cloud.from("payouts").update(row).eq("id",p.id); if(error) throw error; }
-   }
-   for(const oldPay of (existingPays||[])){
-     if(!wantedPayIds.has(oldPay.id) && oldPay.status!=="Bezahlt"){ const {error}=await cloud.from("payouts").delete().eq("id",oldPay.id); if(error) throw error; }
+   let createdCustomerId=null;
+   try{
+     if(!customerId){
+       const cu=await cloud.from("customers").insert({organization_id:cloudOrgId,name:c.customer,notes:c.notes||null}).select("id").single();
+       fail("Kunde anlegen",cu.error);
+       customerId=cu.data.id;
+       createdCustomerId=customerId;
+       c.customerId=customerId;
+       saveLocal();
+     } else {
+       const cu=await cloud.from("customers").update({name:c.customer,notes:c.notes||null,archived_at:null}).eq("id",customerId);
+       fail("Kunde aktualisieren",cu.error);
+     }
+
+     const projectRow={id:c.id,organization_id:cloudOrgId,customer_id:customerId,project_no:c.projectNo,project_name:c.projectName,order_date:c.date||null,status:c.status,kwp:c.kwp||0,modules:c.modules||null,inverter:c.inverter||null,storage:c.storage||null,wallbox:c.wallbox||null,notes:c.notes||null,seller_advisor_id:c.advisorId||null,archived_at:null};
+     let pr;
+     if(existingProjectMap.has(c.id)) pr=await cloud.from("projects").update(projectRow).eq("id",c.id);
+     else pr=await cloud.from("projects").insert(projectRow);
+     fail("Projekt speichern",pr.error);
+
+     const fr=await cloud.from("project_financials").upsert({
+      project_id:c.id,calc_vk:c.calc.vk,calc_upsale:c.calc.upsale,calc_discount:c.calc.discount,calc_desoha:c.calc.desoha,calc_ac_components:c.calc.accomponents,calc_dc_montage:c.calc.dcmontage,calc_ac_montage:c.calc.acmontage,calc_project_material:c.calc.project,calc_other:c.calc.other,
+      actual_vk:c.actual.vk,actual_upsale:c.actual.upsale,actual_discount:c.actual.discount,actual_desoha:c.actual.desoha,actual_ac_components:c.actual.accomponents,actual_dc_montage:c.actual.dcmontage,actual_ac_montage:c.actual.acmontage,actual_project_material:c.actual.project,actual_other:c.actual.other
+     });
+     fail("Projektdaten speichern",fr.error);
+
+     // Commission snapshots are historical and immutable: create them only once.
+     const sr=await cloud.from("project_commission_snapshots").select("id").eq("project_id",c.id).limit(1);
+     fail("Provisionssnapshot laden",sr.error);
+     if(!(sr.data||[]).length){
+       const rows=[{project_id:c.id,advisor_id:c.advisorId||null,advisor_name_snapshot:advisor(c.advisorId)?.name||"",role:"seller",gross_tier_snapshot:c.stageSnapshot||0,gross_share_snapshot:c.stageSnapshot||0,hierarchy_level:0}]
+         .concat((c.overheadSnapshots||[]).map((o,i)=>({project_id:c.id,advisor_id:o.advisorId||null,advisor_name_snapshot:o.name,role:"overhead",gross_tier_snapshot:o.stage||0,gross_share_snapshot:o.rate||0,hierarchy_level:i+1})));
+       if(rows.length){ const r=await cloud.from("project_commission_snapshots").insert(rows); fail("Provisionssnapshot speichern",r.error); }
+     }
+
+     // Synchronize payouts row-by-row. Paid payouts are never changed or deleted.
+     const payRes=await cloud.from("payouts").select("id,status").eq("project_id",c.id);
+     fail("Auszahlungen laden",payRes.error);
+     const existingPays=payRes.data||[];
+     const payMap=new Map(existingPays.map(x=>[x.id,x]));
+     const wantedPayIds=new Set((c.payments||[]).map(p=>p.id));
+     for(const p of (c.payments||[])){
+       const row={id:p.id,project_id:c.id,advisor_id:p.advisorId||null,advisor_name_snapshot:p.advisorName,payout_date:p.date,payout_type:p.type,gross_amount:p.gross,net_amount:p.net,status:p.status};
+       const oldPay=payMap.get(p.id);
+       if(!oldPay){ const r=await cloud.from("payouts").insert(row); fail("Auszahlung anlegen",r.error); }
+       else if(oldPay.status!=="Bezahlt"){ const r=await cloud.from("payouts").update(row).eq("id",p.id); fail("Auszahlung aktualisieren",r.error); }
+     }
+     for(const oldPay of existingPays){
+       if(!wantedPayIds.has(oldPay.id) && oldPay.status!=="Bezahlt"){ const r=await cloud.from("payouts").delete().eq("id",oldPay.id); fail("Auszahlung entfernen",r.error); }
+     }
+   }catch(e){
+     // Avoid orphan customers when project creation fails.
+     if(createdCustomerId){
+       await cloud.from("customers").delete().eq("id",createdCustomerId);
+       c.customerId=null;
+       saveLocal();
+     }
+     throw e;
    }
  }
+
  for(const p of existingProjects){
    if(!wantedProjects.has(p.id)){
-     await cloud.from("projects").update({archived_at:new Date().toISOString()}).eq("id",p.id);
-     await cloud.from("customers").update({archived_at:new Date().toISOString()}).eq("id",p.customer_id);
+     const r1=await cloud.from("projects").update({archived_at:new Date().toISOString()}).eq("id",p.id);
+     fail("Projekt archivieren",r1.error);
+     const r2=await cloud.from("customers").update({archived_at:new Date().toISOString()}).eq("id",p.customer_id);
+     fail("Kunde archivieren",r2.error);
    }
  }
  saveLocal();

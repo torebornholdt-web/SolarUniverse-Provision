@@ -939,7 +939,9 @@ document.addEventListener('click',async e=>{
     if(e.target.classList.contains('fin-row-pay')){
       const id=e.target.dataset.id;
       const input=document.querySelector(`.fin-row-amount[data-id="${id}"]`);
-      const amount=parseGermanNumber(input?.value||'');
+      const raw=String(input?.value||'').trim().replace(/\s/g,'').replace(/€/g,'');
+      const normalized=raw.includes(',') ? raw.replace(/\./g,'').replace(',','.') : raw;
+      const amount=Number(normalized);
       if(!(amount>0)){alert('Bitte einen Zahlungsbetrag eingeben.');return;}
       await financeAddPayment(id,amount,new Date().toISOString().slice(0,10),'Zahlungseingang');
     }

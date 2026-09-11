@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
-<!-- Solar Universe Cloud v12.3 -->
+<!-- Solar Universe Cloud v12.4 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -311,6 +311,8 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="metric card"><span>VK tatsächlich + Upsale</span><b id="finIncome">0 €</b></div>
         <div class="metric card"><span>Bereits erhalten</span><b id="finReceived">0 €</b></div>
         <div class="metric card"><span>Noch zu erwarten</span><b id="finOpenIncome">0 €</b></div>
+        <div class="metric card"><span>Erwartete Ausgaben</span><b id="finExpenses">0 €</b></div>
+        <div class="metric card"><span>Bereits bezahlte Ausgaben</span><b id="finPaidExpenses">0 €</b></div>
         <div class="metric card"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
       </div>
       <div class="card">
@@ -325,7 +327,7 @@ tbody tr:hover{background:#f9fbfe!important}
             <thead>
               <tr>
                 <th>Kunde</th><th>Abschluss</th><th>VK tatsächlich + Upsale</th><th>Erhalten</th><th>Noch zu erwarten</th>
-                <th>Ausgaben</th><th>Bezahlt</th><th>Noch offen</th><th>Zahlung erfassen</th><th>Kosten</th>
+                <th>Erwartete Ausgaben</th><th>Bezahlt</th><th>Noch offen</th><th>Zahlung erfassen</th><th>Kosten</th>
               </tr>
             </thead>
             <tbody id="financeRows"></tbody>
@@ -502,7 +504,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="btn primary" id="saveSettings">Speichern</button>
       </div>
     </section>
-  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.2</span></div>
+  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.4</span></div>
 </main>
 </div>
 
@@ -751,7 +753,21 @@ async function nextProjectNo(){
 }
 $("newCustomer").onclick=async()=>{const a=state.advisors.find(x=>x.active),projectNo=await nextProjectNo(),c={id:uid("C"),customer:"Neuer Kunde",projectNo,projectName:"Neues Projekt",kwp:0,modules:"",inverter:"",storage:"",wallbox:"Nein",date:new Date().toISOString().slice(0,10),status:"Kalkulation",notes:"",advisorId:a?.id||"",stageSnapshot:a?.stage||0,overheadSnapshots:hierarchy(a?.id||""),calc:{vk:0,upsale:0,discount:0,desoha:0,accomponents:0,dcmontage:0,acmontage:0,project:0,custom:0,other:0},actual:{vk:0,upsale:0,discount:0,desoha:0,accomponents:0,dcmontage:0,acmontage:0,project:0,custom:0,other:0},payments:[]};state.customers.push(c);save();openProject(c.id)};
 $("backCustomers").onclick=()=>{setView("customers");renderCustomers()};
-$("saveProject").onclick=()=>{save();renderAll();alert("Projekt gespeichert")};
+$("saveProject").onclick=async()=>{
+ const b=$("saveProject");if(b.disabled)return;
+ const old=b.textContent;b.disabled=true;b.textContent="Speichert …";
+ try{
+   await saveNow();
+   renderAll();
+   if(cloudRole==="admin")await loadFinanceData();
+   alert("Projekt gespeichert");
+ }catch(e){
+   console.error(e);
+   alert("Speichern fehlgeschlagen: "+e.message);
+ }finally{
+   b.disabled=false;b.textContent=old;
+ }
+};
 $("duplicateProject").onclick=async()=>{const c=state.customers.find(x=>x.id===currentId),copy=JSON.parse(JSON.stringify(c));copy.id=uid("C");copy.customerId=null;copy.customerVersion=1;copy.projectVersion=1;copy.financialVersion=1;copy.projectNo=await nextProjectNo();copy.projectName=c.projectName+" (Kopie)";copy.payments=[];state.customers.push(copy);save();openProject(copy.id)};
 $("newAdvisor").onclick=()=>{state.advisors.push({id:uid("A"),name:"Neuer Berater",stage:.20,parentId:"",active:true});save();renderAdvisors()};
 $("saveSettings").onclick=async()=>{
@@ -878,6 +894,8 @@ function renderFinance(){
   document.getElementById('finIncome').textContent=money(ti);
   document.getElementById('finReceived').textContent=money(tr);
   document.getElementById('finOpenIncome').textContent=money(Math.max(0,ti-tr));
+  document.getElementById('finExpenses').textContent=money(te);
+  document.getElementById('finPaidExpenses').textContent=money(tp);
   document.getElementById('finOpenExpenses').textContent=money(Math.max(0,te-tp));
 }
 
@@ -1208,12 +1226,37 @@ async function persistCloudState(){
  saveLocal();
 }
 
+let cloudSaveInFlight=null;
+let cloudSavePending=false;
+async function runCloudSave(){
+ if(!cloudReady||cloudRole==="viewer")return;
+ if(cloudSaveInFlight){cloudSavePending=true;return cloudSaveInFlight;}
+ cloudSaveInFlight=(async()=>{
+   do{
+     cloudSavePending=false;
+     await persistCloudState();
+   }while(cloudSavePending);
+ })();
+ try{return await cloudSaveInFlight;}finally{cloudSaveInFlight=null;}
+}
+async function saveNow(){
+ saveLocal();
+ if(!cloudReady)return;
+ if(cloudRole==="viewer")throw new Error("Nur Leserechte: Änderungen können nicht gespeichert werden.");
+ clearTimeout(cloudSaveTimer);
+ cloudSaveTimer=null;
+ cloudSavePending=true;
+ return runCloudSave();
+}
 save=()=>{
  saveLocal();
  if(!cloudReady)return;
- if(cloudRole==="viewer"){ console.warn("Nur Leserechte: Änderungen werden nicht in die Cloud geschrieben."); return; }
+ if(cloudRole==="viewer"){console.warn("Nur Leserechte: Änderungen werden nicht in die Cloud geschrieben.");return;}
  clearTimeout(cloudSaveTimer);
- cloudSaveTimer=setTimeout(()=>persistCloudState().catch(e=>{console.error(e);alert("Cloud-Speicherung fehlgeschlagen: "+e.message)}),350);
+ cloudSaveTimer=setTimeout(()=>{
+   cloudSavePending=true;
+   runCloudSave().catch(e=>{console.error(e);alert("Cloud-Speicherung fehlgeschlagen: "+e.message)});
+ },350);
 };
 
 async function cloudLogin(signup=false){

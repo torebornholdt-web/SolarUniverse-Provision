@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.4 -->
+<!-- Solar Universe Cloud v12.5 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -361,6 +361,24 @@ tbody tr:hover{background:#f9fbfe!important}
       </div>
     </div>
 
+    <div class="modal hidden" id="financePaymentsModal">
+      <div class="modal-card" style="width:min(820px,96vw)">
+        <div class="section-head">
+          <div>
+            <h3 id="financePaymentsTitle">Zahlungseingänge</h3>
+            <div class="muted">Einzelne Kundenzahlungen können hier korrigiert oder gelöscht werden.</div>
+          </div>
+          <button class="btn ghost" id="financePaymentsClose" type="button">Schließen</button>
+        </div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table>
+            <thead><tr><th>Datum</th><th>Betrag</th><th>Hinweis</th><th>Aktion</th></tr></thead>
+            <tbody id="financePaymentsRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <section id="project" class="view">
       <div class="project-head card">
         <div>
@@ -511,7 +529,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="btn primary" id="saveSettings">Speichern</button>
       </div>
     </section>
-  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.4</span></div>
+  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.5</span></div>
 </main>
 </div>
 
@@ -764,7 +782,7 @@ $("saveProject").onclick=async()=>{
  const b=$("saveProject");if(b.disabled)return;
  const old=b.textContent;b.disabled=true;b.textContent="Speichert …";
  try{
-   await saveNow();
+   await saveNow(currentId);
    renderAll();
    if(cloudRole==="admin")await loadFinanceData();
    alert("Projekt gespeichert");
@@ -838,7 +856,7 @@ renderAll();
 
 
 <script id="finance-v12-4">
-let financeCustomerPayments=[]; let financeExpensePayments=[]; let financeCostProjectId=null;
+let financeCustomerPayments=[]; let financeExpensePayments=[]; let financeCostProjectId=null; let financePaymentsProjectId=null;
 const FIN_COSTS=[['desoha','DESOHA'],['accomponents','AC-Komponenten'],['dcmontage','DC-Montage'],['acmontage','AC-Montage'],['project','Projektierung / Kleinmaterial'],['custom','Weitere Kosten'],['other','Sonstiges']];
 
 function financeExpectedIncome(c){
@@ -867,6 +885,7 @@ async function loadFinanceData(){
   financeExpensePayments=b.data||[];
   renderFinance();
   if(financeCostProjectId) renderFinanceCostModal(financeCostProjectId);
+  if(financePaymentsProjectId) renderFinancePaymentsModal(financePaymentsProjectId);
 }
 
 function renderFinance(){
@@ -882,7 +901,12 @@ function renderFinance(){
         <td>${c.customer}</td>
         <td>${c.date||'—'}</td>
         <td><b>${money(inc)}</b></td>
-        <td class="positive">${money(rec)}</td>
+        <td class="positive">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span>${money(rec)}</span>
+            <button class="btn ghost fin-payments" data-id="${c.id}" type="button" style="padding:5px 8px">Buchungen</button>
+          </div>
+        </td>
         <td class="${open?'negative':'positive'}">${money(open)}</td>
         <td>${money(exp)}</td>
         <td>${money(paid)}</td>
@@ -916,6 +940,54 @@ async function financeAddPayment(projectId,amount,date,note=''){
   });
   if(r.error)throw r.error;
   await loadFinanceData();
+}
+
+function renderFinancePaymentsModal(projectId){
+  const c=state.customers.find(x=>x.id===projectId);
+  if(!c)return;
+  financePaymentsProjectId=projectId;
+  document.getElementById('financePaymentsTitle').textContent='Zahlungseingänge – '+c.customer;
+  const rows=financeCustomerPayments
+    .filter(x=>x.project_id===projectId)
+    .sort((a,b)=>String(a.payment_date||'').localeCompare(String(b.payment_date||'')) || String(a.created_at||'').localeCompare(String(b.created_at||'')))
+    .map(x=>`<tr>
+      <td><input class="fin-payment-date" data-payid="${x.id}" type="date" value="${x.payment_date||''}" style="min-width:135px"></td>
+      <td><input class="fin-payment-amount" data-payid="${x.id}" inputmode="decimal" value="${numberDE(n(x.amount))}" style="min-width:120px"></td>
+      <td><input class="fin-payment-note" data-payid="${x.id}" value="${String(x.note||'').replace(/"/g,'&quot;')}" style="min-width:180px"></td>
+      <td style="display:flex;gap:6px">
+        <button class="btn primary fin-payment-update" data-payid="${x.id}" type="button">Ändern</button>
+        <button class="btn danger fin-payment-delete" data-payid="${x.id}" type="button">Löschen</button>
+      </td>
+    </tr>`).join('');
+  document.getElementById('financePaymentsRows').innerHTML=rows||'<tr><td colspan="4" class="muted">Noch keine Zahlungseingänge vorhanden.</td></tr>';
+  document.getElementById('financePaymentsModal').classList.remove('hidden');
+}
+
+async function financeUpdatePayment(paymentId){
+  const amountEl=document.querySelector(`.fin-payment-amount[data-payid="${paymentId}"]`);
+  const dateEl=document.querySelector(`.fin-payment-date[data-payid="${paymentId}"]`);
+  const noteEl=document.querySelector(`.fin-payment-note[data-payid="${paymentId}"]`);
+  const amount=parseDENumber(amountEl?.value||'');
+  if(!(amount>0))throw new Error('Der Zahlungsbetrag muss größer als 0 sein.');
+  const r=await cloud.from('project_customer_payments')
+    .update({amount,payment_date:dateEl?.value||new Date().toISOString().slice(0,10),note:noteEl?.value||''})
+    .eq('id',paymentId)
+    .select('id');
+  if(r.error)throw r.error;
+  if(!(r.data||[]).length)throw new Error('Die Buchung konnte nicht geändert werden.');
+  await loadFinanceData();
+  if(financePaymentsProjectId)renderFinancePaymentsModal(financePaymentsProjectId);
+}
+
+async function financeDeletePayment(paymentId){
+  const row=financeCustomerPayments.find(x=>x.id===paymentId);
+  if(!row)return;
+  if(!confirm(`Zahlungseingang über ${money(n(row.amount))} vom ${formatDateDE(row.payment_date)} wirklich löschen?`))return;
+  const r=await cloud.from('project_customer_payments').delete().eq('id',paymentId).select('id');
+  if(r.error)throw r.error;
+  if(!(r.data||[]).length)throw new Error('Die Buchung konnte nicht gelöscht werden.');
+  await loadFinanceData();
+  if(financePaymentsProjectId)renderFinancePaymentsModal(financePaymentsProjectId);
 }
 
 function renderFinanceCostModal(projectId){
@@ -976,6 +1048,21 @@ document.addEventListener('click',async e=>{
       if(open>.005&&confirm(`${c.customer}: Restbetrag von ${money(open)} als bezahlt buchen?`)){
         await financeAddPayment(c.id,open,new Date().toISOString().slice(0,10),'Restbetrag komplett gezahlt');
       }
+    }
+    if(e.target.classList.contains('fin-payments')){
+      renderFinancePaymentsModal(e.target.dataset.id);
+    }
+    if(e.target.classList.contains('fin-payment-update')){
+      const b=e.target;if(b.disabled)return;b.disabled=true;
+      try{await financeUpdatePayment(b.dataset.payid);}finally{b.disabled=false;}
+    }
+    if(e.target.classList.contains('fin-payment-delete')){
+      const b=e.target;if(b.disabled)return;b.disabled=true;
+      try{await financeDeletePayment(b.dataset.payid);}finally{b.disabled=false;}
+    }
+    if(e.target.id==='financePaymentsClose'){
+      financePaymentsProjectId=null;
+      document.getElementById('financePaymentsModal').classList.add('hidden');
     }
     if(e.target.classList.contains('fin-costs')){
       renderFinanceCostModal(e.target.dataset.id);
@@ -1073,7 +1160,7 @@ async function loadCloudState(){
   if(cloudRole==="admin") await loadFinanceData();
 }
 
-async function persistCloudState(){
+async function persistCloudState(projectId=null){
  if(!cloudReady||!cloudOrgId) return;
  normalizeCloudIds();
  const fail=(label,error)=>{ if(error) throw new Error(label+": "+error.message); };
@@ -1081,7 +1168,8 @@ async function persistCloudState(){
  // Global settings are NOT written during normal project/customer saves.
  // They are saved only from the dedicated admin settings action.
 
- // Advisors + current history snapshot
+ // Advisors are only synchronized during a full/global save.
+ if(!projectId){
  const advRes=await cloud.from("advisors").select("id").eq("organization_id",cloudOrgId);
  fail("Berater laden",advRes.error);
  const existingAdv=advRes.data||[];
@@ -1120,6 +1208,7 @@ async function persistCloudState(){
      fail("Berater deaktivieren",r.error);
    }
  }
+ }
 
  // Projects/customers. A project is only considered saved after the project row exists.
  const [epRes,ecRes,efRes]=await Promise.all([
@@ -1133,8 +1222,9 @@ async function persistCloudState(){
  const existingCustomerMap=new Map((ecRes.data||[]).map(x=>[x.id,x]));
  const existingFinancialMap=new Map((efRes.data||[]).map(x=>[x.project_id,x]));
  const wantedProjects=new Set(state.customers.map(c=>c.id));
+ const customersToSave=projectId?state.customers.filter(c=>c.id===projectId):state.customers;
 
- for(const c of state.customers){
+ for(const c of customersToSave){
    let customerId=c.customerId;
    let createdCustomerId=null;
    try{
@@ -1222,7 +1312,7 @@ async function persistCloudState(){
    }
  }
 
- for(const p of existingProjects){
+ if(!projectId) for(const p of existingProjects){
    if(!wantedProjects.has(p.id)){
      const r1=await cloud.from("projects").update({archived_at:new Date().toISOString()}).eq("id",p.id);
      fail("Projekt archivieren",r1.error);
@@ -1235,23 +1325,30 @@ async function persistCloudState(){
 
 let cloudSaveInFlight=null;
 let cloudSavePending=false;
+let cloudSaveScope=null;
+function currentSaveScope(){
+  return document.getElementById('project')?.classList.contains('active') && currentId ? currentId : null;
+}
 async function runCloudSave(){
  if(!cloudReady||cloudRole==="viewer")return;
  if(cloudSaveInFlight){cloudSavePending=true;return cloudSaveInFlight;}
  cloudSaveInFlight=(async()=>{
    do{
      cloudSavePending=false;
-     await persistCloudState();
+     const scope=cloudSaveScope;
+     cloudSaveScope=null;
+     await persistCloudState(scope);
    }while(cloudSavePending);
  })();
  try{return await cloudSaveInFlight;}finally{cloudSaveInFlight=null;}
 }
-async function saveNow(){
+async function saveNow(projectId=currentSaveScope()){
  saveLocal();
  if(!cloudReady)return;
  if(cloudRole==="viewer")throw new Error("Nur Leserechte: Änderungen können nicht gespeichert werden.");
  clearTimeout(cloudSaveTimer);
  cloudSaveTimer=null;
+ cloudSaveScope=projectId;
  cloudSavePending=true;
  return runCloudSave();
 }
@@ -1260,10 +1357,12 @@ save=()=>{
  if(!cloudReady)return;
  if(cloudRole==="viewer"){console.warn("Nur Leserechte: Änderungen werden nicht in die Cloud geschrieben.");return;}
  clearTimeout(cloudSaveTimer);
+ const scope=currentSaveScope();
  cloudSaveTimer=setTimeout(()=>{
+   cloudSaveScope=scope;
    cloudSavePending=true;
    runCloudSave().catch(e=>{console.error(e);alert("Cloud-Speicherung fehlgeschlagen: "+e.message)});
- },350);
+ },500);
 };
 
 async function cloudLogin(signup=false){

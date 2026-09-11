@@ -308,15 +308,49 @@ tbody tr:hover{background:#f9fbfe!important}
 
     <section id="finance" class="view">
       <div class="metric-grid">
-        <div class="metric card"><span>Zu erwartende Einnahmen</span><b id="finIncome">0 €</b></div>
+        <div class="metric card"><span>VK gesamt</span><b id="finIncome">0 €</b></div>
         <div class="metric card"><span>Bereits erhalten</span><b id="finReceived">0 €</b></div>
-        <div class="metric card"><span>Noch vom Kunden</span><b id="finOpenIncome">0 €</b></div>
+        <div class="metric card"><span>Noch zu erwarten</span><b id="finOpenIncome">0 €</b></div>
         <div class="metric card"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
       </div>
-      <div class="card"><div class="section-head"><div><h2>Finanzübersicht Baustellen</h2><div class="muted">Nur Admin. Einnahmen basieren auf VK tatsächlich + Upsale tatsächlich; Ausgaben auf tatsächlichen Kosten, ersatzweise kalkulierten Kosten.</div></div></div>
-      <div class="table-wrap"><table><thead><tr><th>Kunde</th><th>Abschluss</th><th>Einnahmen</th><th>Erhalten</th><th>Noch offen</th><th>Ausgaben</th><th>Bezahlt</th><th>Noch offen</th><th>Aktion</th></tr></thead><tbody id="financeRows"></tbody></table></div></div>
-      <div class="card"><h3>Teilzahlung erfassen</h3><div class="grid3"><div><label>Projekt</label><select id="finProject"></select></div><div><label>Betrag</label><input id="finAmount" inputmode="decimal" placeholder="0,00"></div><div><label>Zahlungsdatum</label><input id="finDate" type="date"></div></div><div style="margin-top:12px"><button class="btn primary" id="finAddPayment">Teilzahlung speichern</button></div></div>
+      <div class="card">
+        <div class="section-head">
+          <div>
+            <h2>Finanzübersicht Baustellen</h2>
+            <div class="muted">Nur Admin. Der VK-Preis entspricht dem für das Projekt hinterlegten VK. Zahlungseingänge können direkt je Baustelle erfasst werden.</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Kunde</th><th>Abschluss</th><th>VK-Preis</th><th>Erhalten</th><th>Noch zu erwarten</th>
+                <th>Ausgaben</th><th>Bezahlt</th><th>Noch offen</th><th>Zahlung erfassen</th><th>Kosten</th>
+              </tr>
+            </thead>
+            <tbody id="financeRows"></tbody>
+          </table>
+        </div>
+      </div>
     </section>
+
+    <div class="modal hidden" id="financeCostModal">
+      <div class="modal-card">
+        <div class="section-head">
+          <div>
+            <h3 id="financeCostTitle">Kostenpositionen</h3>
+            <div class="muted">Jede Kostenposition kann einzeln als bezahlt markiert werden.</div>
+          </div>
+          <button class="btn ghost" id="financeCostClose" type="button">Schließen</button>
+        </div>
+        <div class="table-wrap" style="margin-top:12px">
+          <table>
+            <thead><tr><th>Position</th><th>Betrag</th><th>Bezahlt</th><th>Offen</th><th>Aktion</th></tr></thead>
+            <tbody id="financeCostRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
     <section id="project" class="view">
       <div class="project-head card">
@@ -780,18 +814,159 @@ renderAll();
 </script>
 
 
-<script id="finance-v12-3">
-let financeCustomerPayments=[]; let financeExpensePayments=[];
+<script id="finance-v12-4">
+let financeCustomerPayments=[]; let financeExpensePayments=[]; let financeCostProjectId=null;
 const FIN_COSTS=[['desoha','DESOHA'],['accomponents','AC-Komponenten'],['dcmontage','DC-Montage'],['acmontage','AC-Montage'],['project','Projektierung / Kleinmaterial'],['custom','Weitere Kosten'],['other','Sonstiges']];
-function financeExpectedIncome(c){return Math.max(0,n(c.actual.vk)+n(c.actual.upsale)-n(c.actual.discount));}
+
+function financeVK(c){
+  const actual=n(c.actual.vk);
+  return actual>0?actual:n(c.calc.vk);
+}
+function financeExpectedIncome(c){return Math.max(0,financeVK(c));}
 function financeCostValue(c,k){const a=n(c.actual[k]); return a>0?a:n(c.calc[k]);}
 function financeExpectedExpenses(c){return FIN_COSTS.reduce((s,[k])=>s+financeCostValue(c,k),0);}
 function financeReceived(id){return financeCustomerPayments.filter(x=>x.project_id===id).reduce((s,x)=>s+n(x.amount),0);}
 function financeExpensePaid(id){return financeExpensePayments.filter(x=>x.project_id===id).reduce((s,x)=>s+n(x.paid_amount),0);}
-async function loadFinanceData(){ if(cloudRole!=="admin")return; const [a,b]=await Promise.all([cloud.from('project_customer_payments').select('*').order('payment_date'),cloud.from('project_expense_payments').select('*')]); if(a.error)throw a.error;if(b.error)throw b.error;financeCustomerPayments=a.data||[];financeExpensePayments=b.data||[];renderFinance();}
-function renderFinance(){if(cloudRole!=="admin")return;let ti=0,tr=0,te=0,tp=0;const rows=state.customers.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(c=>{const inc=financeExpectedIncome(c),rec=financeReceived(c.id),open=Math.max(0,inc-rec),exp=financeExpectedExpenses(c),paid=financeExpensePaid(c.id),oe=Math.max(0,exp-paid);ti+=inc;tr+=rec;te+=exp;tp+=paid;return `<tr><td>${c.customer}</td><td>${c.date||'—'}</td><td>${money(inc)}</td><td class="positive">${money(rec)}</td><td class="${open?'negative':'positive'}">${money(open)}</td><td>${money(exp)}</td><td>${money(paid)}</td><td class="${oe?'negative':'positive'}">${money(oe)}</td><td><button class="btn ghost fin-full-income" data-id="${c.id}" ${open<=.005?'disabled':''}>Kunde komplett bezahlt</button> <button class="btn ghost fin-full-exp" data-id="${c.id}" ${oe<=.005?'disabled':''}>Kosten komplett bezahlt</button></td></tr>`}).join('');document.getElementById('financeRows').innerHTML=rows;document.getElementById('finIncome').textContent=money(ti);document.getElementById('finReceived').textContent=money(tr);document.getElementById('finOpenIncome').textContent=money(Math.max(0,ti-tr));document.getElementById('finOpenExpenses').textContent=money(Math.max(0,te-tp));const sel=document.getElementById('finProject');if(sel)sel.innerHTML=state.customers.map(c=>`<option value="${c.id}">${c.customer}</option>`).join('');}
-async function financeAddPayment(projectId,amount,date,note=''){if(!(amount>0))return;const r=await cloud.from('project_customer_payments').insert({project_id:projectId,amount,payment_date:date||new Date().toISOString().slice(0,10),note});if(r.error)throw r.error;await loadFinanceData();}
-document.addEventListener('click',async e=>{try{if(e.target.id==='finAddPayment'){const id=document.getElementById('finProject').value,amount=parseGermanNumber(document.getElementById('finAmount').value),date=document.getElementById('finDate').value;await financeAddPayment(id,amount,date,'Teilzahlung');document.getElementById('finAmount').value='';}if(e.target.classList.contains('fin-full-income')){const c=state.customers.find(x=>x.id===e.target.dataset.id),open=Math.max(0,financeExpectedIncome(c)-financeReceived(c.id));if(open>.005&&confirm(`${c.customer}: offenen Kundenbetrag von ${money(open)} komplett als bezahlt buchen?`))await financeAddPayment(c.id,open,new Date().toISOString().slice(0,10),'Betrag komplett gezahlt');}if(e.target.classList.contains('fin-full-exp')){const c=state.customers.find(x=>x.id===e.target.dataset.id);if(!confirm(`${c.customer}: alle aktuell offenen Kostenpositionen als bezahlt markieren?`))return;for(const [k,label] of FIN_COSTS){const target=financeCostValue(c,k),old=financeExpensePayments.find(x=>x.project_id===c.id&&x.cost_key===k);if(target<=0)continue;const row={project_id:c.id,cost_key:k,paid_amount:target,paid_date:new Date().toISOString().slice(0,10),note:'Kosten komplett bezahlt'};const r=await cloud.from('project_expense_payments').upsert(row,{onConflict:'project_id,cost_key'});if(r.error)throw r.error;}await loadFinanceData();}}catch(err){alert('Finanzen: '+err.message);}});
+function financeCostPaid(id,k){return n(financeExpensePayments.find(x=>x.project_id===id&&x.cost_key===k)?.paid_amount);}
+function financeCostLabel(c,k,label){
+  if(k==='custom' && c.customCostLabel) return c.customCostLabel;
+  if(k==='other' && c.otherCostLabel) return c.otherCostLabel;
+  return label;
+}
+
+async function loadFinanceData(){
+  if(cloudRole!=="admin")return;
+  const [a,b]=await Promise.all([
+    cloud.from('project_customer_payments').select('*').order('payment_date'),
+    cloud.from('project_expense_payments').select('*')
+  ]);
+  if(a.error)throw a.error;
+  if(b.error)throw b.error;
+  financeCustomerPayments=a.data||[];
+  financeExpensePayments=b.data||[];
+  renderFinance();
+  if(financeCostProjectId) renderFinanceCostModal(financeCostProjectId);
+}
+
+function renderFinance(){
+  if(cloudRole!=="admin")return;
+  let ti=0,tr=0,te=0,tp=0;
+  const rows=state.customers.slice()
+    .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))
+    .map(c=>{
+      const inc=financeExpectedIncome(c),rec=financeReceived(c.id),open=Math.max(0,inc-rec);
+      const exp=financeExpectedExpenses(c),paid=financeExpensePaid(c.id),oe=Math.max(0,exp-paid);
+      ti+=inc;tr+=rec;te+=exp;tp+=paid;
+      return `<tr>
+        <td>${c.customer}</td>
+        <td>${c.date||'—'}</td>
+        <td><b>${money(inc)}</b></td>
+        <td class="positive">${money(rec)}</td>
+        <td class="${open?'negative':'positive'}">${money(open)}</td>
+        <td>${money(exp)}</td>
+        <td>${money(paid)}</td>
+        <td class="${oe?'negative':'positive'}">${money(oe)}</td>
+        <td>
+          <div style="display:flex;gap:6px;align-items:center;min-width:220px">
+            <input class="fin-row-amount" data-id="${c.id}" inputmode="decimal" placeholder="Betrag" style="width:105px">
+            <button class="btn primary fin-row-pay" data-id="${c.id}" type="button">Buchen</button>
+            <button class="btn ghost fin-full-income" data-id="${c.id}" type="button" ${open<=.005?'disabled':''}>Rest</button>
+          </div>
+        </td>
+        <td><button class="btn ghost fin-costs" data-id="${c.id}" type="button">Kostenpositionen</button></td>
+      </tr>`;
+    }).join('');
+  document.getElementById('financeRows').innerHTML=rows;
+  document.getElementById('finIncome').textContent=money(ti);
+  document.getElementById('finReceived').textContent=money(tr);
+  document.getElementById('finOpenIncome').textContent=money(Math.max(0,ti-tr));
+  document.getElementById('finOpenExpenses').textContent=money(Math.max(0,te-tp));
+}
+
+async function financeAddPayment(projectId,amount,date,note=''){
+  if(!(amount>0))return;
+  const r=await cloud.from('project_customer_payments').insert({
+    project_id:projectId,
+    amount,
+    payment_date:date||new Date().toISOString().slice(0,10),
+    note
+  });
+  if(r.error)throw r.error;
+  await loadFinanceData();
+}
+
+function renderFinanceCostModal(projectId){
+  const c=state.customers.find(x=>x.id===projectId);
+  if(!c)return;
+  financeCostProjectId=projectId;
+  document.getElementById('financeCostTitle').textContent='Kostenpositionen – '+c.customer;
+  document.getElementById('financeCostRows').innerHTML=FIN_COSTS.map(([k,label])=>{
+    const target=financeCostValue(c,k);
+    const paid=financeCostPaid(c.id,k);
+    const open=Math.max(0,target-paid);
+    const done=target>0&&open<=.005;
+    return `<tr>
+      <td>${financeCostLabel(c,k,label)}</td>
+      <td>${money(target)}</td>
+      <td class="${paid>0?'positive':''}">${money(paid)}</td>
+      <td class="${open>0?'negative':'positive'}">${money(open)}</td>
+      <td>
+        <button class="btn ${done?'ghost':'primary'} fin-cost-toggle" data-id="${c.id}" data-key="${k}" type="button" ${target<=0?'disabled':''}>
+          ${target<=0?'Kein Betrag':done?'Wieder öffnen':'Als gezahlt markieren'}
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+  document.getElementById('financeCostModal').classList.remove('hidden');
+}
+
+async function financeSetCostPaid(projectId,costKey,paid){
+  const c=state.customers.find(x=>x.id===projectId);
+  if(!c)return;
+  const target=financeCostValue(c,costKey);
+  if(target<=0)return;
+  if(paid){
+    const row={project_id:projectId,cost_key:costKey,paid_amount:target,paid_date:new Date().toISOString().slice(0,10),note:'Kostenposition bezahlt'};
+    const r=await cloud.from('project_expense_payments').upsert(row,{onConflict:'project_id,cost_key'});
+    if(r.error)throw r.error;
+  }else{
+    const r=await cloud.from('project_expense_payments').delete().eq('project_id',projectId).eq('cost_key',costKey);
+    if(r.error)throw r.error;
+  }
+  await loadFinanceData();
+}
+
+document.addEventListener('click',async e=>{
+  try{
+    if(e.target.classList.contains('fin-row-pay')){
+      const id=e.target.dataset.id;
+      const input=document.querySelector(`.fin-row-amount[data-id="${id}"]`);
+      const amount=parseGermanNumber(input?.value||'');
+      if(!(amount>0)){alert('Bitte einen Zahlungsbetrag eingeben.');return;}
+      await financeAddPayment(id,amount,new Date().toISOString().slice(0,10),'Zahlungseingang');
+    }
+    if(e.target.classList.contains('fin-full-income')){
+      const c=state.customers.find(x=>x.id===e.target.dataset.id);
+      const open=Math.max(0,financeExpectedIncome(c)-financeReceived(c.id));
+      if(open>.005&&confirm(`${c.customer}: Restbetrag von ${money(open)} als bezahlt buchen?`)){
+        await financeAddPayment(c.id,open,new Date().toISOString().slice(0,10),'Restbetrag komplett gezahlt');
+      }
+    }
+    if(e.target.classList.contains('fin-costs')){
+      renderFinanceCostModal(e.target.dataset.id);
+    }
+    if(e.target.classList.contains('fin-cost-toggle')){
+      const id=e.target.dataset.id,key=e.target.dataset.key;
+      const c=state.customers.find(x=>x.id===id);
+      const target=financeCostValue(c,key),paid=financeCostPaid(id,key);
+      await financeSetCostPaid(id,key,!(target>0&&paid>=target-.005));
+    }
+    if(e.target.id==='financeCostClose'){
+      financeCostProjectId=null;
+      document.getElementById('financeCostModal').classList.add('hidden');
+    }
+  }catch(err){alert('Finanzen: '+err.message);}
+});
 </script>
 <script id="supabase-cloud-adapter">
 const SUPABASE_URL = "https://fbqxgrqlwzznkpwnakvu.supabase.co";

@@ -308,7 +308,7 @@ tbody tr:hover{background:#f9fbfe!important}
 
     <section id="finance" class="view">
       <div class="metric-grid">
-        <div class="metric card"><span>VK gesamt</span><b id="finIncome">0 €</b></div>
+        <div class="metric card"><span>VK tatsächlich + Upsale</span><b id="finIncome">0 €</b></div>
         <div class="metric card"><span>Bereits erhalten</span><b id="finReceived">0 €</b></div>
         <div class="metric card"><span>Noch zu erwarten</span><b id="finOpenIncome">0 €</b></div>
         <div class="metric card"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
@@ -317,14 +317,14 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="section-head">
           <div>
             <h2>Finanzübersicht Baustellen</h2>
-            <div class="muted">Nur Admin. Der VK-Preis entspricht dem für das Projekt hinterlegten VK. Zahlungseingänge können direkt je Baustelle erfasst werden.</div>
+            <div class="muted">Nur Admin. Die erwarteten Einnahmen entsprechen dem tatsächlichen VK zuzüglich des tatsächlichen Upsales. Zahlungseingänge können direkt je Baustelle erfasst werden.</div>
           </div>
         </div>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Kunde</th><th>Abschluss</th><th>VK-Preis</th><th>Erhalten</th><th>Noch zu erwarten</th>
+                <th>Kunde</th><th>Abschluss</th><th>VK tatsächlich + Upsale</th><th>Erhalten</th><th>Noch zu erwarten</th>
                 <th>Ausgaben</th><th>Bezahlt</th><th>Noch offen</th><th>Zahlung erfassen</th><th>Kosten</th>
               </tr>
             </thead>
@@ -818,11 +818,9 @@ renderAll();
 let financeCustomerPayments=[]; let financeExpensePayments=[]; let financeCostProjectId=null;
 const FIN_COSTS=[['desoha','DESOHA'],['accomponents','AC-Komponenten'],['dcmontage','DC-Montage'],['acmontage','AC-Montage'],['project','Projektierung / Kleinmaterial'],['custom','Weitere Kosten'],['other','Sonstiges']];
 
-function financeVK(c){
-  const actual=n(c.actual.vk);
-  return actual>0?actual:n(c.calc.vk);
+function financeExpectedIncome(c){
+  return Math.max(0,n(c.actual.vk)+n(c.actual.upsale));
 }
-function financeExpectedIncome(c){return Math.max(0,financeVK(c));}
 function financeCostValue(c,k){const a=n(c.actual[k]); return a>0?a:n(c.calc[k]);}
 function financeExpectedExpenses(c){return FIN_COSTS.reduce((s,[k])=>s+financeCostValue(c,k),0);}
 function financeReceived(id){return financeCustomerPayments.filter(x=>x.project_id===id).reduce((s,x)=>s+n(x.amount),0);}

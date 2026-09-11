@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Solar Universe – Provisionsmanagement</title>
-<!-- Solar Universe Cloud v12.2 -->
+<!-- Solar Universe Cloud v12.3 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -256,6 +256,7 @@ tbody tr:hover{background:#f9fbfe!important}
       <button class="active" data-view="customers">👥 <span>Kunden</span></button>
       <button data-view="advisors">👤 <span>Berater</span></button>
       <button data-view="payouts">▤ <span>Auszahlungen</span></button>
+      <button data-view="finance" id="financeNav">€ <span>Finanzen</span></button>
       <button data-view="settings">⚙ <span>Einstellungen</span></button>
     </nav>
     <div class="tagline">Sonnen<br>Energie<br>Gemeinsam.<br>Mehr erreichen.</div>
@@ -303,6 +304,18 @@ tbody tr:hover{background:#f9fbfe!important}
           </table>
         </div>
       </div>
+    </section>
+
+    <section id="finance" class="view">
+      <div class="metric-grid">
+        <div class="metric card"><span>Zu erwartende Einnahmen</span><b id="finIncome">0 €</b></div>
+        <div class="metric card"><span>Bereits erhalten</span><b id="finReceived">0 €</b></div>
+        <div class="metric card"><span>Noch vom Kunden</span><b id="finOpenIncome">0 €</b></div>
+        <div class="metric card"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
+      </div>
+      <div class="card"><div class="section-head"><div><h2>Finanzübersicht Baustellen</h2><div class="muted">Nur Admin. Einnahmen basieren auf VK tatsächlich + Upsale tatsächlich; Ausgaben auf tatsächlichen Kosten, ersatzweise kalkulierten Kosten.</div></div></div>
+      <div class="table-wrap"><table><thead><tr><th>Kunde</th><th>Abschluss</th><th>Einnahmen</th><th>Erhalten</th><th>Noch offen</th><th>Ausgaben</th><th>Bezahlt</th><th>Noch offen</th><th>Aktion</th></tr></thead><tbody id="financeRows"></tbody></table></div></div>
+      <div class="card"><h3>Teilzahlung erfassen</h3><div class="grid3"><div><label>Projekt</label><select id="finProject"></select></div><div><label>Betrag</label><input id="finAmount" inputmode="decimal" placeholder="0,00"></div><div><label>Zahlungsdatum</label><input id="finDate" type="date"></div></div><div style="margin-top:12px"><button class="btn primary" id="finAddPayment">Teilzahlung speichern</button></div></div>
     </section>
 
     <section id="project" class="view">
@@ -585,7 +598,7 @@ function commission(c){
 function setView(id){
  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));$(id).classList.add("active");
  document.querySelectorAll(".side-nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id));
- $("pageTitle").textContent=id==="project"?"Kunde / Projekt":({dashboard:"Dashboard",customers:"Kunden",advisors:"Berater",payouts:"Auszahlungen",settings:"Einstellungen"}[id]||"");
+ $("pageTitle").textContent=id==="project"?"Kunde / Projekt":({dashboard:"Dashboard",customers:"Kunden",advisors:"Berater",payouts:"Auszahlungen",finance:"Finanzen",settings:"Einstellungen"}[id]||"");
 }
 document.querySelectorAll(".side-nav button").forEach(b=>b.onclick=()=>{setView(b.dataset.view);renderAll()});
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active")});
@@ -766,6 +779,20 @@ renderAll();
 
 </script>
 
+
+<script id="finance-v12-3">
+let financeCustomerPayments=[]; let financeExpensePayments=[];
+const FIN_COSTS=[['desoha','DESOHA'],['accomponents','AC-Komponenten'],['dcmontage','DC-Montage'],['acmontage','AC-Montage'],['project','Projektierung / Kleinmaterial'],['custom','Weitere Kosten'],['other','Sonstiges']];
+function financeExpectedIncome(c){return Math.max(0,n(c.actual.vk)+n(c.actual.upsale)-n(c.actual.discount));}
+function financeCostValue(c,k){const a=n(c.actual[k]); return a>0?a:n(c.calc[k]);}
+function financeExpectedExpenses(c){return FIN_COSTS.reduce((s,[k])=>s+financeCostValue(c,k),0);}
+function financeReceived(id){return financeCustomerPayments.filter(x=>x.project_id===id).reduce((s,x)=>s+n(x.amount),0);}
+function financeExpensePaid(id){return financeExpensePayments.filter(x=>x.project_id===id).reduce((s,x)=>s+n(x.paid_amount),0);}
+async function loadFinanceData(){ if(cloudRole!=="admin")return; const [a,b]=await Promise.all([cloud.from('project_customer_payments').select('*').order('payment_date'),cloud.from('project_expense_payments').select('*')]); if(a.error)throw a.error;if(b.error)throw b.error;financeCustomerPayments=a.data||[];financeExpensePayments=b.data||[];renderFinance();}
+function renderFinance(){if(cloudRole!=="admin")return;let ti=0,tr=0,te=0,tp=0;const rows=state.customers.slice().sort((a,b)=>String(b.date||'').localeCompare(String(a.date||''))).map(c=>{const inc=financeExpectedIncome(c),rec=financeReceived(c.id),open=Math.max(0,inc-rec),exp=financeExpectedExpenses(c),paid=financeExpensePaid(c.id),oe=Math.max(0,exp-paid);ti+=inc;tr+=rec;te+=exp;tp+=paid;return `<tr><td>${c.customer}</td><td>${c.date||'—'}</td><td>${money(inc)}</td><td class="positive">${money(rec)}</td><td class="${open?'negative':'positive'}">${money(open)}</td><td>${money(exp)}</td><td>${money(paid)}</td><td class="${oe?'negative':'positive'}">${money(oe)}</td><td><button class="btn ghost fin-full-income" data-id="${c.id}" ${open<=.005?'disabled':''}>Kunde komplett bezahlt</button> <button class="btn ghost fin-full-exp" data-id="${c.id}" ${oe<=.005?'disabled':''}>Kosten komplett bezahlt</button></td></tr>`}).join('');document.getElementById('financeRows').innerHTML=rows;document.getElementById('finIncome').textContent=money(ti);document.getElementById('finReceived').textContent=money(tr);document.getElementById('finOpenIncome').textContent=money(Math.max(0,ti-tr));document.getElementById('finOpenExpenses').textContent=money(Math.max(0,te-tp));const sel=document.getElementById('finProject');if(sel)sel.innerHTML=state.customers.map(c=>`<option value="${c.id}">${c.customer}</option>`).join('');}
+async function financeAddPayment(projectId,amount,date,note=''){if(!(amount>0))return;const r=await cloud.from('project_customer_payments').insert({project_id:projectId,amount,payment_date:date||new Date().toISOString().slice(0,10),note});if(r.error)throw r.error;await loadFinanceData();}
+document.addEventListener('click',async e=>{try{if(e.target.id==='finAddPayment'){const id=document.getElementById('finProject').value,amount=parseGermanNumber(document.getElementById('finAmount').value),date=document.getElementById('finDate').value;await financeAddPayment(id,amount,date,'Teilzahlung');document.getElementById('finAmount').value='';}if(e.target.classList.contains('fin-full-income')){const c=state.customers.find(x=>x.id===e.target.dataset.id),open=Math.max(0,financeExpectedIncome(c)-financeReceived(c.id));if(open>.005&&confirm(`${c.customer}: offenen Kundenbetrag von ${money(open)} komplett als bezahlt buchen?`))await financeAddPayment(c.id,open,new Date().toISOString().slice(0,10),'Betrag komplett gezahlt');}if(e.target.classList.contains('fin-full-exp')){const c=state.customers.find(x=>x.id===e.target.dataset.id);if(!confirm(`${c.customer}: alle aktuell offenen Kostenpositionen als bezahlt markieren?`))return;for(const [k,label] of FIN_COSTS){const target=financeCostValue(c,k),old=financeExpensePayments.find(x=>x.project_id===c.id&&x.cost_key===k);if(target<=0)continue;const row={project_id:c.id,cost_key:k,paid_amount:target,paid_date:new Date().toISOString().slice(0,10),note:'Kosten komplett bezahlt'};const r=await cloud.from('project_expense_payments').upsert(row,{onConflict:'project_id,cost_key'});if(r.error)throw r.error;}await loadFinanceData();}}catch(err){alert('Finanzen: '+err.message);}});
+</script>
 <script id="supabase-cloud-adapter">
 const SUPABASE_URL = "https://fbqxgrqlwzznkpwnakvu.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_s-04MbC447p9zCe0EXHKLw_KZqpZcn6";
@@ -789,6 +816,7 @@ async function resolveOrg(){
   cloudRole=data.role;
   const settingsNav=document.querySelector('.side-nav button[data-view="settings"]');
   if(settingsNav) settingsNav.style.display=(cloudRole==="admin"?"":"none");
+  const financeNav=document.getElementById("financeNav"); if(financeNav) financeNav.style.display=(cloudRole==="admin"?"":"none");
   return data;
 }
 
@@ -842,6 +870,7 @@ async function loadCloudState(){
   currentId=state.customers[0]?.id||null;
   saveLocal();
   renderAll();
+  if(cloudRole==="admin") await loadFinanceData();
 }
 
 async function persistCloudState(){

@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.5 -->
+<!-- Solar Universe Cloud v12.6 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -234,6 +234,16 @@ tbody tr:hover{background:#f9fbfe!important}
 #cloudLogout{margin:8px 12px 0;width:calc(100% - 24px)}
 </style>
 
+
+<style id="finance-kpi-highlights">
+#finance .metric-grid{grid-template-columns:repeat(3,1fr)!important}
+#finance .fin-highlight-income{border:2px solid #15985d!important;border-left:6px solid #15985d!important;background:#f0fbf5!important;box-shadow:0 4px 14px rgba(21,152,93,.13)}
+#finance .fin-highlight-income span,#finance .fin-highlight-income b{color:#147145!important}
+#finance .fin-highlight-expense{border:2px solid #ff7a00!important;border-left:6px solid #ff7a00!important;background:#fff7ef!important;box-shadow:0 4px 14px rgba(255,122,0,.13)}
+#finance .fin-highlight-expense span,#finance .fin-highlight-expense b{color:#c45d00!important}
+@media(max-width:1100px){#finance .metric-grid{grid-template-columns:repeat(2,1fr)!important}}
+@media(max-width:650px){#finance .metric-grid{grid-template-columns:1fr!important}}
+</style>
 </head>
 <body>
 
@@ -317,10 +327,10 @@ tbody tr:hover{background:#f9fbfe!important}
       <div class="metric-grid">
         <div class="metric card"><span>VK tatsächlich + Upsale</span><b id="finIncome">0 €</b></div>
         <div class="metric card"><span>Bereits erhalten</span><b id="finReceived">0 €</b></div>
-        <div class="metric card"><span>Noch zu erwarten</span><b id="finOpenIncome">0 €</b></div>
+        <div class="metric card fin-highlight-income"><span>Noch offene Kundenzahlungen</span><b id="finOpenIncome">0 €</b></div>
         <div class="metric card"><span>Erwartete Ausgaben</span><b id="finExpenses">0 €</b></div>
         <div class="metric card"><span>Bereits bezahlte Ausgaben</span><b id="finPaidExpenses">0 €</b></div>
-        <div class="metric card"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
+        <div class="metric card fin-highlight-expense"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
       </div>
       <div class="card">
         <div class="section-head">
@@ -529,7 +539,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="btn primary" id="saveSettings">Speichern</button>
       </div>
     </section>
-  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.5</span></div>
+  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.6</span></div>
 </main>
 </div>
 

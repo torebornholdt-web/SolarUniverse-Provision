@@ -1010,7 +1010,7 @@ async function loadFinanceData(){
 }
 
 function renderFinance(){
-  if(cloudRole!=="admin")return;
+  if(!cloudFinanceAccess)return;
   let ti=0,tr=0,te=0,tp=0;
   syncPeriodFilters();
   let totalOpenIncome=0;

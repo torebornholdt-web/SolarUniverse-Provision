@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.12 -->
+<!-- Solar Universe Cloud v12.13 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -261,6 +261,16 @@ tbody tr:hover{background:#f9fbfe!important}
 <style id="payout80-marker-ui">
 .payout80-dot{width:22px;height:22px;min-width:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#fbbf24;color:#4a3500;font-size:9px;font-weight:800;line-height:1;box-shadow:0 0 0 3px rgba(251,191,36,.12)}
 </style>
+
+<style id="period-filter-save-ui">
+.period-filter-bar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px;padding:12px 16px}
+.period-filter-bar>div{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.period-filter-select{width:auto;min-width:190px;font-weight:700}
+#dashboard .compact-subline{margin-top:8px;padding-top:8px}
+.save-toast{position:fixed;top:18px;right:18px;z-index:100000;background:#e9f8ef;color:#147145;border:1px solid #9eddb8;border-radius:10px;padding:10px 14px;font-weight:800;box-shadow:0 8px 24px rgba(0,0,0,.12);opacity:0;transform:translateY(-8px);transition:.18s ease;pointer-events:none}
+.save-toast.show{opacity:1;transform:translateY(0)}
+@media(max-width:650px){.period-filter-bar{align-items:stretch;flex-direction:column}.period-filter-select{width:100%}}
+</style>
 </head>
 <body>
 
@@ -313,6 +323,13 @@ tbody tr:hover{background:#f9fbfe!important}
     </header>
 
     <section id="dashboard" class="view">
+      <div class="period-filter-bar card">
+        <div>
+          <b>Zeitraum</b>
+          <span class="muted">bezogen auf das Abschlussdatum</span>
+        </div>
+        <select id="dashboardPeriodFilter" class="period-filter-select"></select>
+      </div>
       <div class="metric-grid dashboard-metric-grid">
         <div class="metric card">
           <span>Kunden / Projekte</span>
@@ -325,6 +342,10 @@ tbody tr:hover{background:#f9fbfe!important}
             <small>Ø pro Baustelle</small>
             <strong id="mAvgGrossProfit">0 €</strong>
           </div>
+          <div class="metric-subline compact-subline">
+            <small>Rohertragsmarge</small>
+            <strong id="mCalcMargin">0 %</strong>
+          </div>
         </div>
         <div class="metric card dashboard-combined-metric">
           <span>Tatsächlicher Rohertrag abgeschlossener Projekte</span>
@@ -332,6 +353,10 @@ tbody tr:hover{background:#f9fbfe!important}
           <div class="metric-subline">
             <small>Ø abgeschlossene Projekte</small>
             <strong id="mAvgActualClosedGrossProfit">0 €</strong>
+          </div>
+          <div class="metric-subline compact-subline">
+            <small>Tatsächliche Rohertragsmarge</small>
+            <strong id="mActualMargin">0 %</strong>
           </div>
         </div>
       </div>
@@ -357,6 +382,13 @@ tbody tr:hover{background:#f9fbfe!important}
     </section>
 
     <section id="finance" class="view">
+      <div class="period-filter-bar card">
+        <div>
+          <b>Zeitraum</b>
+          <span class="muted">bezogen auf das Abschlussdatum</span>
+        </div>
+        <select id="financePeriodFilter" class="period-filter-select"></select>
+      </div>
       <div class="metric-grid">
         <div class="metric card"><span>VK tatsächlich + Upsale</span><b id="finIncome">0 €</b></div>
         <div class="metric card"><span>Bereits erhalten</span><b id="finReceived">0 €</b></div>
@@ -572,7 +604,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="btn primary" id="saveSettings">Speichern</button>
       </div>
     </section>
-  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.12</span></div>
+  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.13</span></div>
 </main>
 </div>
 
@@ -610,6 +642,36 @@ function parseDENumber(value){
  const n=Number(normalized);return Number.isFinite(n)?n:0;
 }
 function formatDateDE(value){if(!value)return "—";const [y,m,d]=String(value).split("-");return y&&m&&d?`${d}.${m}.${y}`:value}
+const MONTH_NAMES=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+let periodFilter=localStorage.getItem("su_period_filter")||"all";
+function periodMatches(c){
+ const d=String(c?.date||"");
+ if(periodFilter==="all")return true;
+ if(/^\d{4}$/.test(periodFilter))return d.startsWith(periodFilter+"-");
+ return d.startsWith(periodFilter);
+}
+function periodFilterOptions(){
+ const years=new Set([2025,2026]);
+ state.customers.forEach(c=>{const y=Number(String(c.date||"").slice(0,4));if(y>2000&&y<2100)years.add(y);});
+ let html='<option value="all">Alle</option>';
+ [...years].sort().forEach(y=>{
+   html+=`<option value="${y}">${y}</option>`;
+   for(let m=1;m<=12;m++){const mm=String(m).padStart(2,"0");html+=`<option value="${y}-${mm}">${MONTH_NAMES[m-1]} ${y}</option>`;}
+ });
+ return html;
+}
+function syncPeriodFilters(){
+ ["dashboardPeriodFilter","financePeriodFilter"].forEach(id=>{
+   const el=$(id);if(!el)return;el.innerHTML=periodFilterOptions();el.value=periodFilter;
+   el.onchange=()=>{periodFilter=el.value;localStorage.setItem("su_period_filter",periodFilter);syncPeriodFilters();renderDashboard();if(cloudFinanceAccess)renderFinance();};
+ });
+}
+let saveToastTimer=null;
+function showSaveToast(message="Gespeichert ✓"){
+ let el=document.getElementById("saveToast");
+ if(!el){el=document.createElement("div");el.id="saveToast";el.className="save-toast";document.body.appendChild(el);}
+ el.textContent=message;el.classList.add("show");clearTimeout(saveToastTimer);saveToastTimer=setTimeout(()=>el.classList.remove("show"),1600);
+}
 let customerSortDir=localStorage.getItem("su_customer_sort_date")||"desc";
 const pct=n=>(Number(n||0)*100).toFixed(2).replace(".",",")+" %";
 const uid=p=>crypto.randomUUID();
@@ -728,19 +790,25 @@ function renderCustomers(){
 }
 
 function renderDashboard(){
- $("mProjects").textContent=state.customers.length;
- let gp=0,actualClosedGp=0,actualClosedCount=0,calcCount=0;$("dashboardRows").innerHTML="";
- state.customers.forEach(c=>{
-  const calcGp=economy(c,"calc").gp;
-  gp+=calcGp;
+ syncPeriodFilters();
+ const filtered=state.customers.filter(periodMatches);
+ $("mProjects").textContent=filtered.length;
+ let gp=0,calcVk=0,actualClosedGp=0,actualClosedVk=0,actualClosedCount=0,calcCount=0;$("dashboardRows").innerHTML="";
+ filtered.forEach(c=>{
+  const calc=economy(c,"calc"),calcGp=calc.gp;
+  gp+=calcGp;calcVk+=calc.vk;
   if(n(c.calc?.vk)>0)calcCount++;
-  if(String(c.status||"").trim().toLowerCase()==="abgeschlossen"){actualClosedGp+=economy(c,"actual").gp;actualClosedCount++;}
+  if(String(c.status||"").trim().toLowerCase()==="abgeschlossen"){
+    const act=economy(c,"actual");actualClosedGp+=act.gp;actualClosedVk+=act.vk;actualClosedCount++;
+  }
   const tr=document.createElement("tr");tr.innerHTML=`<td>${c.customer}</td><td>${c.projectName}</td><td>${advisor(c.advisorId)?.name||""}</td><td>${c.status}</td><td>${money(calcGp)}</td>`;$("dashboardRows").appendChild(tr)
  });
  $("mGrossProfit").textContent=money(gp);
  $("mAvgGrossProfit").textContent=money(calcCount?gp/calcCount:0);
+ $("mCalcMargin").textContent=(calcVk?gp/calcVk*100:0).toFixed(1).replace(".",",")+" %";
  $("mActualClosedGrossProfit").textContent=money(actualClosedGp);
  $("mAvgActualClosedGrossProfit").textContent=money(actualClosedCount?actualClosedGp/actualClosedCount:0);
+ $("mActualMargin").textContent=(actualClosedVk?actualClosedGp/actualClosedVk*100:0).toFixed(1).replace(".",",")+" %";
 }
 function fillAdvisorSelect(id){
  $("fAdvisor").innerHTML=state.advisors.filter(a=>a.active).map(a=>`<option value="${a.id}" ${a.id===id?"selected":""}>${a.name} (${pct(a.stage)})</option>`).join("");
@@ -838,7 +906,7 @@ $("saveProject").onclick=async()=>{
    await saveNow(currentId);
    renderAll();
    if(cloudFinanceAccess)await loadFinanceData();
-   alert("Projekt gespeichert");
+   showSaveToast("Gespeichert ✓");
  }catch(e){
    console.error(e);
    alert("Speichern fehlgeschlagen: "+e.message);
@@ -944,12 +1012,14 @@ async function loadFinanceData(){
 function renderFinance(){
   if(cloudRole!=="admin")return;
   let ti=0,tr=0,te=0,tp=0;
-  const rows=state.customers.slice()
+  syncPeriodFilters();
+  let totalOpenIncome=0;
+  const rows=state.customers.slice().filter(periodMatches)
     .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))
     .map(c=>{
       const inc=financeExpectedIncome(c),rec=financeReceived(c.id),open=Math.max(0,inc-rec);
       const exp=financeExpectedExpenses(c),paid=financeExpensePaid(c.id),oe=Math.max(0,exp-paid);
-      ti+=inc;tr+=rec;te+=exp;tp+=paid;
+      ti+=inc;tr+=rec;te+=exp;tp+=paid;totalOpenIncome+=open;
       return `<tr>
         <td><div class="customer-name-with-dot">${String(c.status||"").trim().toLowerCase()==="abgeschlossen"?'<span class="completion-dot" title="Projekt abgeschlossen"></span>':(provisionOverviewStatus(c,"first").cls==="paid"?'<span class="payout80-dot" title="80 % Provision ausgezahlt">80</span>':'<span class="completion-dot-placeholder"></span>')}<b>${c.customer}</b></div></td>
         <td>${c.date||'—'}</td>
@@ -977,7 +1047,7 @@ function renderFinance(){
   document.getElementById('financeRows').innerHTML=rows;
   document.getElementById('finIncome').textContent=money(ti);
   document.getElementById('finReceived').textContent=money(tr);
-  document.getElementById('finOpenIncome').textContent=money(Math.max(0,ti-tr));
+  document.getElementById('finOpenIncome').textContent=money(totalOpenIncome);
   document.getElementById('finExpenses').textContent=money(te);
   document.getElementById('finPaidExpenses').textContent=money(tp);
   document.getElementById('finOpenExpenses').textContent=money(Math.max(0,te-tp));
@@ -985,6 +1055,16 @@ function renderFinance(){
 
 async function financeAddPayment(projectId,amount,date,note=''){
   if(!(amount>0))return;
+  const c=state.customers.find(x=>x.id===projectId);
+  const expected=c?financeExpectedIncome(c):0;
+  const received=financeReceived(projectId);
+  const open=Math.max(0,expected-received);
+  if(amount>open+.01){
+    const msg=open>0
+      ? `Der eingegebene Zahlungseingang von ${money(amount)} liegt über dem noch offenen Kundenbetrag von ${money(open)}. Trotzdem buchen?`
+      : `Für dieses Projekt ist aktuell kein Kundenbetrag mehr offen. Trotzdem ${money(amount)} buchen?`;
+    if(!confirm(msg))return;
+  }
   const r=await cloud.from('project_customer_payments').insert({
     project_id:projectId,
     amount,
@@ -1022,6 +1102,13 @@ async function financeUpdatePayment(paymentId){
   const noteEl=document.querySelector(`.fin-payment-note[data-payid="${paymentId}"]`);
   const amount=parseDENumber(amountEl?.value||'');
   if(!(amount>0))throw new Error('Der Zahlungsbetrag muss größer als 0 sein.');
+  const current=financeCustomerPayments.find(x=>x.id===paymentId);
+  const c=current?state.customers.find(x=>x.id===current.project_id):null;
+  if(current&&c){
+    const receivedWithoutCurrent=financeReceived(current.project_id)-n(current.amount);
+    const openBefore=Math.max(0,financeExpectedIncome(c)-receivedWithoutCurrent);
+    if(amount>openBefore+.01 && !confirm(`Der korrigierte Zahlungseingang von ${money(amount)} liegt über dem offenen Kundenbetrag von ${money(openBefore)}. Trotzdem speichern?`))return;
+  }
   const r=await cloud.from('project_customer_payments')
     .update({amount,payment_date:dateEl?.value||new Date().toISOString().slice(0,10),note:noteEl?.value||''})
     .eq('id',paymentId)
@@ -1215,7 +1302,7 @@ async function loadCloudState(){
   currentId=state.customers[0]?.id||null;
   saveLocal();
   renderAll();
-  if(cloudRole==="admin") await loadFinanceData();
+  if(cloudFinanceAccess) await loadFinanceData();
 }
 
 async function persistCloudState(projectId=null){

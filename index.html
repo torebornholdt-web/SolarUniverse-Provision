@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.14 -->
+<!-- Solar Universe Cloud v12.15 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -278,7 +278,13 @@ tbody tr:hover{background:#f9fbfe!important}
 #advisors #advisorPayoutRows tr.total-row td{font-weight:800;border-top:2px solid var(--line)}
 @media(max-width:800px){.advisor-payout-head{align-items:stretch;flex-direction:column}.advisor-payout-metrics{grid-template-columns:1fr!important}}
 </style>
-</head>
+<style id="commission-diff-ui">
+.commission-diff-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important;margin-top:12px}
+#commissionDiffRows tr.clickable:hover{background:rgba(0,0,0,.025)}
+#commissionDiffRows .diff-positive{font-weight:800;color:#c56a00}
+#commissionDiffRows .diff-negative{font-weight:800;color:#b42318}
+@media(max-width:700px){.commission-diff-metrics{grid-template-columns:1fr!important}}
+</style></head>
 <body>
 
 <div id="cloudLogin">
@@ -607,6 +613,20 @@ tbody tr:hover{background:#f9fbfe!important}
 
     <section id="payouts" class="view">
       <div class="card">
+        <div class="section-head">
+          <div><h2>Provisionsdifferenzen abgeschlossener Aufträge</h2><div class="muted">Soll = tatsächlicher Provisionsanspruch · Ist = bereits gezahlte Provision</div></div>
+          <select id="commissionDiffPeriodFilter" class="period-filter-select"></select>
+        </div>
+        <div class="metric-grid commission-diff-metrics">
+          <div class="metric card"><span>Offene Differenz netto</span><b id="commissionDiffNet">0 €</b></div>
+          <div class="metric card"><span>Betroffene Aufträge</span><b id="commissionDiffProjects">0</b></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr><th>Kunde</th><th>Abschlussdatum</th><th>Berater</th><th>Soll netto</th><th>Ist netto</th><th>Differenz netto</th></tr></thead>
+          <tbody id="commissionDiffRows"></tbody>
+        </table></div>
+      </div>
+      <div class="card" style="margin-top:14px">
         <h2>Alle Auszahlungen</h2>
         <div class="table-wrap"><table>
           <thead><tr><th>Datum</th><th>Kunde</th><th>Projekt</th><th>Berater</th><th>Art</th><th>Brutto</th><th>Netto</th><th>Status</th></tr></thead>
@@ -626,7 +646,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="btn primary" id="saveSettings">Speichern</button>
       </div>
     </section>
-  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.14</span></div>
+  <div class="footer-note"><span>Solar Universe · Effizient. Transparent. Gemeinsam erfolgreich.</span><span>Provisions-App v12.15</span></div>
 </main>
 </div>
 
@@ -949,12 +969,43 @@ function renderPayments(c){
   c.payments=c.payments.filter(x=>x.id!==b.dataset.id);save();renderPayments(c);renderAllPayments();renderAdvisorPayoutSummary();renderProjectComputed();
  });
 }
+let commissionDiffPeriodFilter=localStorage.getItem("su_commission_diff_period")||"all";
+function syncCommissionDiffFilter(){
+ const el=$("commissionDiffPeriodFilter");if(!el)return;
+ el.innerHTML=periodFilterOptions();el.value=commissionDiffPeriodFilter;
+ el.onchange=()=>{commissionDiffPeriodFilter=el.value;localStorage.setItem("su_commission_diff_period",commissionDiffPeriodFilter);renderCommissionDifferences();};
+}
+function commissionDiffPeriodMatches(c){
+ const d=String(c?.date||"");
+ if(commissionDiffPeriodFilter==="all")return true;
+ if(/^\d{4}$/.test(commissionDiffPeriodFilter))return d.startsWith(commissionDiffPeriodFilter+"-");
+ return d.startsWith(commissionDiffPeriodFilter);
+}
+function renderCommissionDifferences(){
+ syncCommissionDiffFilter();
+ const rows=[];let totalDiff=0;const affected=new Set();
+ state.customers.filter(c=>String(c.status||"").trim().toLowerCase()==="abgeschlossen"&&commissionDiffPeriodMatches(c)).forEach(c=>{
+   commission(c).forEach(r=>{
+     const diff=r.netFinal-r.paidNet;
+     if(Math.abs(diff)<=0.01)return;
+     rows.push({c,r,diff});totalDiff+=diff;affected.add(c.id);
+   });
+ });
+ rows.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff));
+ $("commissionDiffRows").innerHTML=rows.length?rows.map(({c,r,diff})=>`<tr class="clickable" data-id="${c.id}">
+   <td><b>${c.customer}</b><div class="muted">${c.projectName||""}</div></td>
+   <td>${formatDateDE(c.date)}</td><td>${r.name}</td><td>${money(r.netFinal)}</td><td>${money(r.paidNet)}</td>
+   <td class="${diff>0?"diff-positive":"diff-negative"}">${money(diff)}</td></tr>`).join(""):'<tr><td colspan="6" class="muted">Keine Provisionsdifferenzen bei abgeschlossenen Aufträgen im gewählten Zeitraum.</td></tr>';
+ $("commissionDiffNet").textContent=money(totalDiff);
+ $("commissionDiffProjects").textContent=affected.size;
+ document.querySelectorAll("#commissionDiffRows tr[data-id]").forEach(tr=>tr.onclick=()=>openProject(tr.dataset.id));
+}
 function renderAllPayments(){
  const rows=[];state.customers.forEach(c=>(c.payments||[]).forEach(p=>rows.push({c,p})));
  $("allPaymentRows").innerHTML=rows.map(({c,p})=>{const paid=isPaidStatus(p.status);return `<tr><td>${p.date}</td><td>${c.customer}</td><td>${c.projectName}</td><td>${p.advisorName}</td><td>${p.type}</td><td>${money(p.gross)}</td><td>${money(p.net)}</td><td><span class="status ${paid?"paid":"open"}">${paid?"Gezahlt":p.status}</span></td></tr>`}).join("");
 }
 function renderSettings(){$("sVat").value=state.settings.vat;$("sFirst").value=state.settings.first;$("sMax").value=state.settings.max}
-function renderAll(){renderCustomers();renderDashboard();renderAdvisors();renderAdvisorPayoutSummary();renderAllPayments();renderSettings()}
+function renderAll(){renderCustomers();renderDashboard();renderAdvisors();renderAdvisorPayoutSummary();renderCommissionDifferences();renderAllPayments();renderSettings()}
 $("globalSearch").oninput=renderCustomers;
 const sortDateButton=$("sortDate");if(sortDateButton)sortDateButton.onclick=e=>{e.stopPropagation();customerSortDir=customerSortDir==="asc"?"desc":"asc";localStorage.setItem("su_customer_sort_date",customerSortDir);renderCustomers()};
 async function nextProjectNo(){

@@ -1,0 +1,35 @@
+name: Highlight commission columns
+
+on:
+  push:
+    paths:
+      - '.github/workflows/highlight-commission.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Add commission highlights
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          marker='/* commission-final-rest-highlight-v1 */'
+          if marker not in s:
+              css='''\n<style id="commission-final-rest-highlight">\n/* commission-final-rest-highlight-v1 */\n#commissionTable th:nth-child(5),#commissionTable td:nth-child(5){\n  background:#eef5ff!important;\n  font-weight:800!important;\n  color:#0b3478!important;\n  border-left:2px solid #b8cdea!important;\n  border-right:2px solid #b8cdea!important;\n}\n#commissionTable th:nth-child(8),#commissionTable td:nth-child(8){\n  background:#fff3e7!important;\n  font-weight:900!important;\n  color:#b95700!important;\n  border-left:2px solid #ffb86f!important;\n  border-right:2px solid #ffb86f!important;\n}\n#commissionTable tbody td:nth-child(5),#commissionTable tbody td:nth-child(8){font-size:14px!important;}\n#commissionTable th:nth-child(5),#commissionTable th:nth-child(8){font-size:13px!important;}\n#commissionTable tfoot th:nth-child(5),#commissionTable tfoot th:nth-child(8){font-size:15px!important;}\n</style>\n'''
+              s=s.replace('</head>',css+'\n</head>',1)
+              p.write_text(s)
+          PY
+      - name: Commit change
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Emphasize final commission and remaining gross"
+          git push

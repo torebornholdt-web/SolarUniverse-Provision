@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.19 -->
+<!-- Solar Universe Cloud v12.20 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -313,6 +313,17 @@ tbody tr:hover{background:#f9fbfe!important}
 #commissionTable tfoot th:nth-child(7),#commissionTable tfoot th:nth-child(9){font-size:15px!important;}
 </style>
 
+
+<style id="dashboard-advisor-performance-ui">
+#dashboard .advisor-performance-card{margin-top:14px}
+#dashboard .advisor-performance-metrics{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important;margin-top:12px}
+#dashboard .advisor-performance-metrics .metric{min-height:118px}
+#dashboard .advisor-performance-metrics .metric b{font-size:22px}
+#dashboard .advisor-performance-metrics .advisor-performance-sub{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px}
+#dashboard .advisor-performance-metrics .advisor-performance-sub strong{color:var(--blue);font-size:14px}
+@media(max-width:700px){#dashboard .advisor-performance-metrics{grid-template-columns:1fr!important}}
+</style>
+
 </head>
 <body>
 
@@ -409,6 +420,13 @@ tbody tr:hover{background:#f9fbfe!important}
             <strong id="mAvgActualNetAfterCommission">0 €</strong>
           </div>
         </div>
+      </div>
+      <div class="card advisor-performance-card">
+        <div class="section-head">
+          <div><h2>Berater-Performance</h2><div class="muted">Abgeschlossene Anlagen im gewählten Zeitraum · tatsächlicher Ertrag nach allen Provisionen</div></div>
+        </div>
+        <div id="dashboardAdvisorPerformance" class="metric-grid advisor-performance-metrics"></div>
+        <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Berater</th><th>Abgeschlossene Anlagen</th><th>Tatsächlicher Ertrag nach Provisionen</th><th>Ø je Anlage</th></tr></thead><tbody id="dashboardAdvisorPerformanceRows"></tbody></table></div>
       </div>
       <div class="card">
         <div class="section-head"><h2>Aktuelle Projekte</h2></div>
@@ -897,12 +915,19 @@ function renderDashboard(){
  const filtered=state.customers.filter(periodMatches);
  $("mProjects").textContent=filtered.length;
  let gp=0,calcVk=0,actualClosedGp=0,actualClosedVk=0,actualClosedCommission=0,actualClosedCount=0,calcCount=0;$("dashboardRows").innerHTML="";
+ const advisorPerformance=new Map();
  filtered.forEach(c=>{
   const calc=economy(c,"calc"),calcGp=calc.gp;
   gp+=calcGp;calcVk+=calc.vk;
   if(n(c.calc?.vk)>0)calcCount++;
   if(String(c.status||"").trim().toLowerCase()==="abgeschlossen"){
-    const act=economy(c,"actual");actualClosedGp+=act.gp;actualClosedVk+=act.vk;actualClosedCommission+=commission(c).reduce((sum,r)=>sum+n(r.netFinal),0);actualClosedCount++;
+    const act=economy(c,"actual");
+    const projectCommission=commission(c).reduce((sum,r)=>sum+n(r.netFinal),0);
+    const projectNetAfterCommission=act.gp-projectCommission;
+    actualClosedGp+=act.gp;actualClosedVk+=act.vk;actualClosedCommission+=projectCommission;actualClosedCount++;
+    const seller=advisor(c.advisorId),key=c.advisorId||seller?.name||"__unknown__";
+    const perf=advisorPerformance.get(key)||{name:seller?.name||"Ohne Berater",count:0,netAfterCommission:0};
+    perf.count++;perf.netAfterCommission+=projectNetAfterCommission;advisorPerformance.set(key,perf);
   }
   const tr=document.createElement("tr");tr.innerHTML=`<td>${c.customer}</td><td>${c.projectName}</td><td>${advisor(c.advisorId)?.name||""}</td><td>${c.status}</td><td>${money(calcGp)}</td>`;$("dashboardRows").appendChild(tr)
  });
@@ -915,6 +940,9 @@ function renderDashboard(){
  const actualNetAfterCommission=actualClosedGp-actualClosedCommission;
  $("mActualNetAfterCommission").textContent=money(actualNetAfterCommission);
  $("mAvgActualNetAfterCommission").textContent=money(actualClosedCount?actualNetAfterCommission/actualClosedCount:0);
+ const perfRows=[...advisorPerformance.values()].sort((a,b)=>b.count-a.count||b.netAfterCommission-a.netAfterCommission||a.name.localeCompare(b.name,"de"));
+ $("dashboardAdvisorPerformance").innerHTML=perfRows.length?perfRows.map(r=>`<div class="metric card"><span>${r.name}</span><b>${r.count} ${r.count===1?"Anlage":"Anlagen"}</b><div class="advisor-performance-sub"><span>Ertrag nach Provisionen</span><strong>${money(r.netAfterCommission)}</strong></div><div class="advisor-performance-sub"><span>Ø je Anlage</span><strong>${money(r.count?r.netAfterCommission/r.count:0)}</strong></div></div>`).join(""):`<div class="muted">Keine abgeschlossenen Anlagen im gewählten Zeitraum.</div>`;
+ $("dashboardAdvisorPerformanceRows").innerHTML=perfRows.map(r=>`<tr><td><b>${r.name}</b></td><td>${r.count}</td><td>${money(r.netAfterCommission)}</td><td>${money(r.count?r.netAfterCommission/r.count:0)}</td></tr>`).join("");
 }
 function fillAdvisorSelect(id){
  $("fAdvisor").innerHTML=state.advisors.filter(a=>a.active).map(a=>`<option value="${a.id}" ${a.id===id?"selected":""}>${a.name} (${pct(a.stage)})</option>`).join("");

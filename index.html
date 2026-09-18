@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.20 -->
+<!-- Solar Universe Cloud v12.21 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -1133,14 +1133,19 @@ $("savePayment").onclick=()=>{const c=state.customers.find(x=>x.id===currentId),
 renderAll();
 
 
-// --- Kunde löschen: Version 8 ---
+// --- Kunde löschen: Version 9 / Cloud-sichere Archivierung ---
 (function(){
   const deleteBtn = document.getElementById("deleteCustomer");
   if(deleteBtn){
-    deleteBtn.addEventListener("click", function(){
+    deleteBtn.addEventListener("click", async function(){
+      if(deleteBtn.disabled)return;
       const c = state.customers.find(x => x.id === currentId);
       if(!c){
         alert("Kein Kunde ausgewählt.");
+        return;
+      }
+      if(cloudReady && cloudRole==="viewer"){
+        alert("Nur Leserechte: Kunden können nicht gelöscht werden.");
         return;
       }
 
@@ -1148,21 +1153,50 @@ renderAll();
         'Kunde "' + c.customer + '" wirklich löschen?\n\n' +
         'Projekt: ' + c.projectName + '\n' +
         'Projekt-Nr.: ' + c.projectNo + '\n\n' +
-        'Alle zugehörigen Auszahlungen werden ebenfalls gelöscht.\n' +
-        'Dieser Schritt kann nicht rückgängig gemacht werden.'
+        'Der Kunde und das Projekt werden archiviert und aus der App ausgeblendet.\n' +
+        'Vorhandene Finanz- und Provisionsdaten bleiben in der Datenbank erhalten.'
       );
-
       if(!confirmed) return;
 
-      state.customers = state.customers.filter(x => x.id !== currentId);
-      save();
+      const oldText=deleteBtn.textContent;
+      deleteBtn.disabled=true;
+      deleteBtn.textContent="Löscht …";
+      try{
+        if(cloudReady){
+          const archivedAt=new Date().toISOString();
+          const pr=await cloud.from("projects")
+            .update({archived_at:archivedAt})
+            .eq("id",c.id)
+            .eq("organization_id",cloudOrgId)
+            .select("id");
+          if(pr.error)throw new Error("Projekt archivieren: "+pr.error.message);
+          if(!(pr.data||[]).length)throw new Error("Projekt konnte nicht archiviert werden.");
 
-      currentId = state.customers.length ? state.customers[0].id : null;
+          if(c.customerId){
+            const cu=await cloud.from("customers")
+              .update({archived_at:archivedAt})
+              .eq("id",c.customerId)
+              .eq("organization_id",cloudOrgId)
+              .select("id");
+            if(cu.error)throw new Error("Kunde archivieren: "+cu.error.message);
+            if(!(cu.data||[]).length)throw new Error("Kunde konnte nicht archiviert werden.");
+          }
+        }
 
-      setView("customers");
-      renderAll();
-
-      alert('Kunde "' + c.customer + '" wurde gelöscht.');
+        state.customers = state.customers.filter(x => x.id !== c.id);
+        currentId = state.customers.length ? state.customers[0].id : null;
+        saveLocal();
+        setView("customers");
+        renderAll();
+        if(cloudFinanceAccess)await loadFinanceData();
+        alert('Kunde "' + c.customer + '" wurde gelöscht.');
+      }catch(e){
+        console.error(e);
+        alert("Löschen fehlgeschlagen: "+e.message);
+      }finally{
+        deleteBtn.disabled=false;
+        deleteBtn.textContent=oldText;
+      }
     });
   }
 })();

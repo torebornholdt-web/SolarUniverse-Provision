@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.21 -->
+<!-- Solar Universe Cloud v12.22 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -530,7 +530,7 @@ tbody tr:hover{background:#f9fbfe!important}
           <div class="muted" id="projectMeta"></div>
         </div>
         <div class="head-actions">
-          <button class="btn danger" id="deleteCustomer">Kunde löschen</button>
+          <button class="btn danger" id="deleteCustomer" type="button" onclick="deleteCurrentCustomer()">Kunde löschen</button>
           <button class="btn ghost" id="duplicateProject">Projekt kopieren</button>
           <button class="btn primary" id="saveProject">Speichern</button>
         </div>
@@ -1133,73 +1133,7 @@ $("savePayment").onclick=()=>{const c=state.customers.find(x=>x.id===currentId),
 renderAll();
 
 
-// --- Kunde löschen: Version 9 / Cloud-sichere Archivierung ---
-(function(){
-  const deleteBtn = document.getElementById("deleteCustomer");
-  if(deleteBtn){
-    deleteBtn.addEventListener("click", async function(){
-      if(deleteBtn.disabled)return;
-      const c = state.customers.find(x => x.id === currentId);
-      if(!c){
-        alert("Kein Kunde ausgewählt.");
-        return;
-      }
-      if(cloudReady && cloudRole==="viewer"){
-        alert("Nur Leserechte: Kunden können nicht gelöscht werden.");
-        return;
-      }
-
-      const confirmed = window.confirm(
-        'Kunde "' + c.customer + '" wirklich löschen?\n\n' +
-        'Projekt: ' + c.projectName + '\n' +
-        'Projekt-Nr.: ' + c.projectNo + '\n\n' +
-        'Der Kunde und das Projekt werden archiviert und aus der App ausgeblendet.\n' +
-        'Vorhandene Finanz- und Provisionsdaten bleiben in der Datenbank erhalten.'
-      );
-      if(!confirmed) return;
-
-      const oldText=deleteBtn.textContent;
-      deleteBtn.disabled=true;
-      deleteBtn.textContent="Löscht …";
-      try{
-        if(cloudReady){
-          const archivedAt=new Date().toISOString();
-          const pr=await cloud.from("projects")
-            .update({archived_at:archivedAt})
-            .eq("id",c.id)
-            .eq("organization_id",cloudOrgId)
-            .select("id");
-          if(pr.error)throw new Error("Projekt archivieren: "+pr.error.message);
-          if(!(pr.data||[]).length)throw new Error("Projekt konnte nicht archiviert werden.");
-
-          if(c.customerId){
-            const cu=await cloud.from("customers")
-              .update({archived_at:archivedAt})
-              .eq("id",c.customerId)
-              .eq("organization_id",cloudOrgId)
-              .select("id");
-            if(cu.error)throw new Error("Kunde archivieren: "+cu.error.message);
-            if(!(cu.data||[]).length)throw new Error("Kunde konnte nicht archiviert werden.");
-          }
-        }
-
-        state.customers = state.customers.filter(x => x.id !== c.id);
-        currentId = state.customers.length ? state.customers[0].id : null;
-        saveLocal();
-        setView("customers");
-        renderAll();
-        if(cloudFinanceAccess)await loadFinanceData();
-        alert('Kunde "' + c.customer + '" wurde gelöscht.');
-      }catch(e){
-        console.error(e);
-        alert("Löschen fehlgeschlagen: "+e.message);
-      }finally{
-        deleteBtn.disabled=false;
-        deleteBtn.textContent=oldText;
-      }
-    });
-  }
-})();
+// Löschfunktion wird im Cloud-Adapter registriert.
 
 </script>
 
@@ -1457,6 +1391,47 @@ let cloudRole = null;
 let cloudFinanceAccess = false;
 let cloudReady = false;
 let cloudSaveTimer = null;
+
+async function deleteCurrentCustomer(){
+  const deleteBtn=document.getElementById("deleteCustomer");
+  if(deleteBtn?.disabled)return;
+  const c=state.customers.find(x=>x.id===currentId);
+  if(!c){alert("Kein Kunde ausgewählt.");return;}
+  if(!cloudReady){alert("Die Cloud-Verbindung ist noch nicht bereit. Bitte kurz warten und erneut versuchen.");return;}
+  if(cloudRole==="viewer"){alert("Nur Leserechte: Kunden können nicht gelöscht werden.");return;}
+  const confirmed=window.confirm(
+    'Kunde "'+c.customer+'" wirklich löschen?\n\n'+
+    'Projekt: '+c.projectName+'\n'+
+    'Projekt-Nr.: '+c.projectNo+'\n\n'+
+    'Der Kunde und das Projekt werden archiviert und aus der App ausgeblendet.\n'+
+    'Vorhandene Finanz- und Provisionsdaten bleiben in der Datenbank erhalten.'
+  );
+  if(!confirmed)return;
+  const oldText=deleteBtn?.textContent||"Kunde löschen";
+  if(deleteBtn){deleteBtn.disabled=true;deleteBtn.textContent="Löscht …";}
+  try{
+    const archivedAt=new Date().toISOString();
+    const pr=await cloud.from("projects").update({archived_at:archivedAt}).eq("id",c.id).eq("organization_id",cloudOrgId).select("id");
+    if(pr.error)throw new Error("Projekt archivieren: "+pr.error.message);
+    if(!(pr.data||[]).length)throw new Error("Projekt konnte nicht archiviert werden. Bitte Berechtigung prüfen.");
+    if(c.customerId){
+      const other=state.customers.some(x=>x.id!==c.id&&x.customerId===c.customerId);
+      if(!other){
+        const cu=await cloud.from("customers").update({archived_at:archivedAt}).eq("id",c.customerId).eq("organization_id",cloudOrgId).select("id");
+        if(cu.error)throw new Error("Kunde archivieren: "+cu.error.message);
+        if(!(cu.data||[]).length)throw new Error("Kunde konnte nicht archiviert werden. Bitte Berechtigung prüfen.");
+      }
+    }
+    state.customers=state.customers.filter(x=>x.id!==c.id);
+    currentId=state.customers[0]?.id||null;
+    saveLocal();
+    setView("customers");renderAll();
+    if(cloudFinanceAccess)await loadFinanceData();
+    alert('Kunde "'+c.customer+'" wurde gelöscht.');
+  }catch(e){console.error(e);alert("Löschen fehlgeschlagen: "+e.message);}
+  finally{if(deleteBtn){deleteBtn.disabled=false;deleteBtn.textContent=oldText;}}
+}
+
 
 function loginMessage(msg, bad=false){
   const el=document.getElementById("loginMsg"); if(!el)return;

@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.23 -->
+<!-- Solar Universe Cloud v12.24 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -710,7 +710,7 @@ tbody tr:hover{background:#f9fbfe!important}
           <div class="metric card"><span>Anzahl Auszahlungen</span><b id="advisorPaidCount">0</b></div>
         </div>
         <div class="table-wrap" style="margin-top:12px"><table>
-          <thead><tr><th>Berater</th><th>Auszahlungen</th><th>80 % netto</th><th>Schlusszahlung netto</th><th>Sonstige netto</th><th>Gesamt netto</th><th>Gesamt brutto</th></tr></thead>
+          <thead><tr><th>Berater</th><th>Auszahlungen</th><th>80 % netto</th><th>Schlusszahlung netto</th><th>Gesamt netto</th><th>Gesamt brutto</th></tr></thead>
           <tbody id="advisorPayoutRows"></tbody>
         </table></div>
       </div>
@@ -1064,7 +1064,7 @@ function renderAdvisorPayoutSummary(){
    totalNet+=net;totalGross+=gross;totalCount++;
  }));
  const rows=[...byAdvisor.values()].sort((a,b)=>b.net-a.net);
- $("advisorPayoutRows").innerHTML=rows.map(x=>`<tr><td><b>${x.name}</b></td><td>${x.count}</td><td>${money(x.firstNet)}</td><td>${money(x.finalNet)}</td><td>${money(x.otherNet)}</td><td><b>${money(x.net)}</b></td><td>${money(x.gross)}</td></tr>`).join("")+(rows.length?`<tr class="total-row"><td>Gesamt</td><td>${totalCount}</td><td></td><td></td><td></td><td>${money(totalNet)}</td><td>${money(totalGross)}</td></tr>`:'<tr><td colspan="7" class="muted">Für diesen Zeitraum sind keine gezahlten Provisionen vorhanden.</td></tr>');
+ $("advisorPayoutRows").innerHTML=rows.map(x=>`<tr><td><b>${x.name}</b></td><td>${x.count}</td><td>${money(x.firstNet)}</td><td>${money(x.finalNet)}</td><td><b>${money(x.net)}</b></td><td>${money(x.gross)}</td></tr>`).join("")+(rows.length?`<tr class="total-row"><td>Gesamt</td><td>${totalCount}</td><td></td><td></td><td>${money(totalNet)}</td><td>${money(totalGross)}</td></tr>`:'<tr><td colspan="6" class="muted">Für diesen Zeitraum sind keine gezahlten Provisionen vorhanden.</td></tr>');
  $("advisorPaidNet").textContent=money(totalNet);
  $("advisorPaidGross").textContent=money(totalGross);
  $("advisorPaidCount").textContent=totalCount;

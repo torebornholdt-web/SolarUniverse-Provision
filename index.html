@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.22 -->
+<!-- Solar Universe Cloud v12.23 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -322,6 +322,56 @@ tbody tr:hover{background:#f9fbfe!important}
 #dashboard .advisor-performance-metrics .advisor-performance-sub{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;color:var(--muted);font-size:12px}
 #dashboard .advisor-performance-metrics .advisor-performance-sub strong{color:var(--blue);font-size:14px}
 @media(max-width:700px){#dashboard .advisor-performance-metrics{grid-template-columns:1fr!important}}
+</style>
+
+
+<style id="mobile-v12-23">
+/* Mobile optimization for the complete app */
+@media(max-width:700px){
+  html,body{overflow-x:hidden}
+  .app-shell{display:block;min-width:0}
+  .sidebar{position:sticky!important;top:0!important;z-index:500;height:auto!important;padding:8px 8px 7px!important;background:linear-gradient(90deg,#082a5b,#0b356f)!important}
+  .brand,.tagline,#cloudUser,#cloudLogout{display:none!important}
+  .side-nav{display:flex!important;flex-direction:row!important;gap:6px!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch;padding:0 0 2px;scrollbar-width:none}
+  .side-nav::-webkit-scrollbar{display:none}
+  .side-nav button{flex:0 0 auto!important;min-height:42px;padding:10px 12px!important;border-radius:9px!important;font-size:13px!important;white-space:nowrap}
+  .side-nav button span{display:inline!important;margin-left:5px!important}
+  .main{padding:0 8px 24px!important;min-width:0}
+  .topbar{height:auto!important;padding:10px 2px 8px!important;display:block!important}
+  .topbar .eyebrow{font-size:10px}.topbar h1{font-size:21px!important;margin:2px 0 8px!important}
+  .top-actions{display:flex!important;flex-direction:row!important;align-items:center!important;gap:7px!important;width:100%}
+  .search{width:100%!important;min-width:0!important;height:42px}.admin{display:none!important}
+  .card{padding:12px!important;border-radius:10px!important;margin-bottom:10px!important}
+  .section-head,.project-head{align-items:stretch!important;flex-direction:column!important;gap:10px!important}
+  .head-actions{display:grid!important;grid-template-columns:1fr 1fr!important;gap:7px!important;width:100%}
+  .head-actions .btn{width:100%;min-height:44px;padding:9px 8px!important}
+  #saveProject{grid-column:1/-1}
+  #backCustomers{width:100%;min-height:42px}
+  .grid2,.grid3,.layout-3,.layout-3.bottom,.metric-grid,#dashboard .dashboard-metric-grid,#finance .metric-grid{grid-template-columns:1fr!important}
+  .metric{min-height:auto!important;padding:12px!important}.metric b{font-size:21px!important}
+  .tabs{position:sticky;top:57px;z-index:300;margin:0 -2px 10px!important;padding:5px!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch}
+  .tab{padding:10px 11px!important;font-size:13px!important}
+  .table-wrap{width:100%;overflow-x:auto!important;-webkit-overflow-scrolling:touch;border-radius:8px}
+  table{min-width:max-content}
+  th,td{padding:9px 8px!important;font-size:12px!important}
+  input,select,textarea{font-size:16px!important;min-height:42px}
+  textarea{min-height:90px}
+  .btn{min-height:42px;touch-action:manipulation}
+  .cost-line{grid-template-columns:1fr!important;gap:4px!important;padding:8px 0;border-bottom:1px solid var(--line)}
+  .cost-line .name{padding-bottom:2px!important;font-weight:700}
+  .summary-row{gap:12px}.summary-row>*:last-child{text-align:right}
+  .period-filter-bar{padding:10px 12px!important}.period-filter-select{width:100%!important;min-width:0!important}
+  .modal{padding:8px!important;align-items:end!important}.modal-card{width:100%!important;max-height:92vh!important;overflow:auto!important;border-radius:14px 14px 0 0!important;padding:14px!important}
+  .login-card{padding:20px!important}.login-actions{display:grid!important;grid-template-columns:1fr!important}.login-actions button{width:100%}
+  #finance .fin-row-amount{width:95px!important}
+  #finance td>div{min-width:0}
+  .advisor-payout-head{align-items:stretch!important}
+  #advisors .advisor-customer-paid-table{min-width:520px}
+}
+@media(max-width:390px){
+  .side-nav button{padding:9px 10px!important;font-size:12px!important}
+  .head-actions{grid-template-columns:1fr!important}#saveProject{grid-column:auto}
+}
 </style>
 
 </head>
@@ -662,6 +712,15 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="table-wrap" style="margin-top:12px"><table>
           <thead><tr><th>Berater</th><th>Auszahlungen</th><th>80 % netto</th><th>Schlusszahlung netto</th><th>Sonstige netto</th><th>Gesamt netto</th><th>Gesamt brutto</th></tr></thead>
           <tbody id="advisorPayoutRows"></tbody>
+        </table></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="section-head">
+          <div><h2>Kunden & gezahlte Provisionen</h2><div class="muted">Je Kunde und Berater kumuliert · nur Status „Gezahlt“ · Zeitraumfilter wie oben</div></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px"><table class="advisor-customer-paid-table">
+          <thead><tr><th>Kunde</th><th>Berater</th><th>Provision gezahlt netto</th></tr></thead>
+          <tbody id="advisorCustomerPaidRows"></tbody>
         </table></div>
       </div>
     </section>
@@ -1009,6 +1068,21 @@ function renderAdvisorPayoutSummary(){
  $("advisorPaidNet").textContent=money(totalNet);
  $("advisorPaidGross").textContent=money(totalGross);
  $("advisorPaidCount").textContent=totalCount;
+
+ // Kundenliste: alle gezahlten Provisionen je Kunde + Berater kumulieren.
+ const customerAdvisorPaid=new Map();
+ state.customers.forEach(c=>(c.payments||[]).forEach(p=>{
+   if(!isPaidStatus(p.status)||!advisorPayoutPeriodMatches(p))return;
+   const advisorKey=p.advisorId||("name:"+String(p.advisorName||"Unbekannt"));
+   const customerKey=c.customerId||("customer:"+String(c.customer||""));
+   const key=customerKey+"|"+advisorKey;
+   const old=customerAdvisorPaid.get(key)||{customer:c.customer||"Unbekannt",advisor:p.advisorName||advisor(p.advisorId)?.name||"Unbekannt",net:0,lastDate:""};
+   old.net+=n(p.net);
+   if(String(p.date||"")>old.lastDate)old.lastDate=String(p.date||"");
+   customerAdvisorPaid.set(key,old);
+ }));
+ const customerRows=[...customerAdvisorPaid.values()].sort((a,b)=>String(b.lastDate).localeCompare(String(a.lastDate))||a.customer.localeCompare(b.customer,"de")||a.advisor.localeCompare(b.advisor,"de"));
+ $("advisorCustomerPaidRows").innerHTML=customerRows.length?customerRows.map(x=>`<tr><td><b>${x.customer}</b></td><td>${x.advisor}</td><td><b>${money(x.net)}</b></td></tr>`).join(""):'<tr><td colspan="3" class="muted">Für diesen Zeitraum sind keine gezahlten Provisionen vorhanden.</td></tr>';
 }
 
 function renderPayments(c){

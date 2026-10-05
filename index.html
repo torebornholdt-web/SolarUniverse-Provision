@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.24 -->
+<!-- Solar Universe Cloud v12.25 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -1131,7 +1131,8 @@ function renderCommissionDifferences(){
  state.customers.filter(c=>String(c.status||"").trim().toLowerCase()==="abgeschlossen"&&commissionDiffPeriodMatches(c)).forEach(c=>{
    commission(c).forEach(r=>{
      const diff=r.netFinal-r.paidNet,diffGross=r.grossFinal-r.paidGross;
-     if(Math.abs(diff)<=0.01&&Math.abs(diffGross)<=0.01)return;
+     // Cent-Rundung: 0,00 € netto + höchstens 0,01 € brutto ist keine relevante Provisionsdifferenz.
+     if(Math.round(Math.abs(diff)*100)===0 && Math.round(Math.abs(diffGross)*100)<=1)return;
      rows.push({c,r,diff,diffGross});totalDiff+=diff;totalDiffGross+=diffGross;affected.add(c.id);
      const key=r.advisorId||r.name;
      const x=advisorDiffs.get(key)||{name:r.name,diff:0,diffGross:0};

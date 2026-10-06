@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.28 -->
+<!-- Solar Universe Cloud v12.29 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -383,6 +383,12 @@ tbody tr:hover{background:#f9fbfe!important}
 .labor-cost-total{margin-top:8px!important}
 @media(max-width:700px){.labor-cost-box{margin-top:18px}.labor-cost-lines>div{align-items:flex-start}}
 </style>
+<style id="labor-only-ui">
+.labor-only-hidden{display:none!important}
+#laborcosts table{max-width:760px}
+#laborcosts th:last-child,#laborcosts td:last-child{text-align:right}
+@media(max-width:700px){#laborcosts table{min-width:0!important}#laborcosts th,#laborcosts td{white-space:normal}}
+</style>
 </head>
 <body>
 
@@ -412,6 +418,7 @@ tbody tr:hover{background:#f9fbfe!important}
       <button class="active" data-view="customers">👥 <span>Kunden</span></button>
       <button data-view="advisors">👤 <span>Berater</span></button>
       <button data-view="payouts">▤ <span>Auszahlungen</span></button>
+      <button data-view="laborcosts">▦ <span>Handwerkerkosten</span></button>
       <button data-view="finance" id="financeNav">€ <span>Finanzen</span></button>
       <button data-view="settings">⚙ <span>Einstellungen</span></button>
     </nav>
@@ -764,6 +771,8 @@ tbody tr:hover{background:#f9fbfe!important}
       </div>
     </section>
 
+    <section id="laborcosts" class="view"><div class="card"><div class="section-head"><h2>Handwerkerkosten</h2></div><div class="table-wrap"><table><thead><tr><th>Kundenname</th><th>Lohnkosten</th></tr></thead><tbody id="laborCostRows"></tbody></table></div></div></section>
+
     <section id="settings" class="view">
       <div class="card settings-card">
         <h2>Einstellungen</h2>
@@ -955,9 +964,10 @@ function commission(c){
  });
 }
 function setView(id){
+ if(laborOnlyUser && id!=="laborcosts") id="laborcosts";
  document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));$(id).classList.add("active");
  document.querySelectorAll(".side-nav button").forEach(b=>b.classList.toggle("active",b.dataset.view===id));
- $("pageTitle").textContent=id==="project"?"Kunde / Projekt":({dashboard:"Dashboard",customers:"Kunden",advisors:"Berater",payouts:"Auszahlungen",finance:"Finanzen",settings:"Einstellungen"}[id]||"");
+ $("pageTitle").textContent=id==="project"?"Kunde / Projekt":({dashboard:"Dashboard",customers:"Kunden",advisors:"Berater",payouts:"Auszahlungen",finance:"Finanzen",laborcosts:"Handwerkerkosten",settings:"Einstellungen"}[id]||"");
 }
 document.querySelectorAll(".side-nav button").forEach(b=>b.onclick=()=>{setView(b.dataset.view);renderAll()});
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".tab-panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$("tab-"+b.dataset.tab).classList.add("active")});
@@ -1172,7 +1182,14 @@ function renderAllPayments(){
  $("allPaymentRows").innerHTML=rows.map(({c,p})=>{const paid=isPaidStatus(p.status);return `<tr><td>${p.date}</td><td>${c.customer}</td><td>${c.projectName}</td><td>${p.advisorName}</td><td>${p.type}</td><td>${money(p.gross)}</td><td>${money(p.net)}</td><td><span class="status ${paid?"paid":"open"}">${paid?"Gezahlt":p.status}</span></td></tr>`}).join("");
 }
 function renderSettings(){$("sVat").value=state.settings.vat;$("sFirst").value=state.settings.first;$("sMax").value=state.settings.max}
-function renderAll(){renderCustomers();renderDashboard();renderAdvisors();renderAdvisorPayoutSummary();renderCommissionDifferences();renderAllPayments();renderSettings()}
+function renderLaborCosts(){
+ const rows=[...state.customers].sort((a,b)=>String(a.customer||"").localeCompare(String(b.customer||""),"de"));
+ $("laborCostRows").innerHTML=rows.length?rows.map(c=>{
+   const labor=n(c.actual.dcmontage)+n(c.actual.project)+n(c.actual.acmontage)*0.755;
+   return `<tr><td><b>${c.customer||"—"}</b></td><td><b>${money(labor)}</b></td></tr>`;
+ }).join(""):'<tr><td colspan="2" class="muted">Keine Kunden vorhanden.</td></tr>';
+}
+function renderAll(){renderCustomers();renderDashboard();renderAdvisors();renderAdvisorPayoutSummary();renderCommissionDifferences();renderAllPayments();renderLaborCosts();renderSettings()}
 $("globalSearch").oninput=renderCustomers;
 const sortDateButton=$("sortDate");if(sortDateButton)sortDateButton.onclick=e=>{e.stopPropagation();customerSortDir=customerSortDir==="asc"?"desc":"asc";localStorage.setItem("su_customer_sort_date",customerSortDir);renderCustomers()};
 async function nextProjectNo(){
@@ -1480,6 +1497,7 @@ let cloudOrgId = null;
 let cloudRole = null;
 let cloudFinanceAccess = false;
 let cloudReady = false;
+let laborOnlyUser = false;
 let cloudSaveTimer = null;
 
 async function deleteCurrentCustomer(){
@@ -1820,8 +1838,15 @@ async function startCloudApp(){
  if(!user){showLogin(true);return;}
  try{
    document.getElementById("cloudUser").textContent=user.email||"";
+   laborOnlyUser=String(user.email||"").trim().toLowerCase()==="angebote@solaruniverse.de";
    await loadCloudState();
    cloudReady=true;
+   if(laborOnlyUser){
+     document.querySelectorAll(".side-nav button").forEach(b=>b.style.display=b.dataset.view==="laborcosts"?"":"none");
+     document.querySelector(".top-actions")?.classList.add("labor-only-hidden");
+     setView("laborcosts");
+     renderLaborCosts();
+   }
    showLogin(false);
  }catch(e){console.error(e);loginMessage(e.message,true);showLogin(true);}
 }

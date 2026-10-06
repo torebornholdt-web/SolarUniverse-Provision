@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.27 -->
+<!-- Solar Universe Cloud v12.28 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -634,14 +634,8 @@ tbody tr:hover{background:#f9fbfe!important}
             <div class="summary-row"><span>Gesamt VK netto kalk.</span><b id="sumVkCalc"></b></div>
             <div class="summary-row"><span>Gesamt VK netto tatsächl.</span><b id="sumVkActual"></b></div>
             <div class="labor-cost-box">
-              <div class="labor-cost-title">Lohnkosten für Rechnung</div>
-              <div class="muted">Nur tatsächliche Kosten: 100 % DC-Montage + 100 % Projektierung/Kleinmaterial + 75,5 % AC-Montage</div>
-              <div class="labor-cost-lines">
-                <div><span>DC-Montage (100 %)</span><b id="laborDc"></b></div>
-                <div><span>Projektierung/Kleinmaterial (100 %)</span><b id="laborProject"></b></div>
-                <div><span>AC-Montage (75,5 %)</span><b id="laborAc"></b></div>
-              </div>
-              <div class="summary-row accent labor-cost-total"><span>Lohnkosten gesamt</span><b id="laborTotal"></b></div>
+              <div class="summary-row accent labor-cost-total"><span>Lohnkosten für die Rechnung</span><b id="laborTotal"></b></div>
+              <span id="laborDc" hidden></span><span id="laborProject" hidden></span><span id="laborAc" hidden></span>
             </div>
           </div>
 

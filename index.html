@@ -11,7 +11,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Solar Universe">
-<!-- Solar Universe Cloud v12.26 -->
+<!-- Solar Universe Cloud v12.27 -->
 <style>
 
 :root{--nav:#12376a;--nav2:#194a84;--orange:#ff850a;--blue:#0c2d68;--bg:#f3f6fa;--card:#fff;--line:#d9e2ee;--muted:#6b7a90;--green:#12995a;--red:#d52d2d}
@@ -374,6 +374,15 @@ tbody tr:hover{background:#f9fbfe!important}
 }
 </style>
 
+<style id="labor-cost-ui">
+.labor-cost-box{margin-top:34px;padding:14px;border:1px solid var(--line);border-radius:10px;background:#f8fbff}
+.labor-cost-title{font-weight:800;color:var(--blue);margin-bottom:4px}
+.labor-cost-lines{margin-top:10px}
+.labor-cost-lines>div{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.labor-cost-lines b{white-space:nowrap;color:var(--blue)}
+.labor-cost-total{margin-top:8px!important}
+@media(max-width:700px){.labor-cost-box{margin-top:18px}.labor-cost-lines>div{align-items:flex-start}}
+</style>
 </head>
 <body>
 
@@ -624,6 +633,16 @@ tbody tr:hover{background:#f9fbfe!important}
             </div>
             <div class="summary-row"><span>Gesamt VK netto kalk.</span><b id="sumVkCalc"></b></div>
             <div class="summary-row"><span>Gesamt VK netto tatsächl.</span><b id="sumVkActual"></b></div>
+            <div class="labor-cost-box">
+              <div class="labor-cost-title">Lohnkosten für Rechnung</div>
+              <div class="muted">Nur tatsächliche Kosten: 100 % DC-Montage + 100 % Projektierung/Kleinmaterial + 75,5 % AC-Montage</div>
+              <div class="labor-cost-lines">
+                <div><span>DC-Montage (100 %)</span><b id="laborDc"></b></div>
+                <div><span>Projektierung/Kleinmaterial (100 %)</span><b id="laborProject"></b></div>
+                <div><span>AC-Montage (75,5 %)</span><b id="laborAc"></b></div>
+              </div>
+              <div class="summary-row accent labor-cost-total"><span>Lohnkosten gesamt</span><b id="laborTotal"></b></div>
+            </div>
           </div>
 
           <div class="card">
@@ -1032,6 +1051,8 @@ function renderProject(){
 function renderProjectComputed(){
  const c=state.customers.find(x=>x.id===currentId),ec=economy(c,"calc"),ea=economy(c,"actual");
  $("sumVkCalc").textContent=money(ec.vk);$("sumVkActual").textContent=money(ea.vk);$("sumEkCalc").textContent=money(ec.ek);$("sumEkActual").textContent=money(ea.ek);
+ const laborDc=n(c.actual.dcmontage),laborProject=n(c.actual.project),laborAc=n(c.actual.acmontage)*0.755,laborTotal=laborDc+laborProject+laborAc;
+ $("laborDc").textContent=money(laborDc);$("laborProject").textContent=money(laborProject);$("laborAc").textContent=money(laborAc);$("laborTotal").textContent=money(laborTotal);
  $("gpCalc").textContent=money(ec.gp);$("gpActual").textContent=money(ea.gp);$("gpDelta").textContent=money(ea.gp-ec.gp);$("gpDelta").className=(ea.gp-ec.gp)>=0?"positive":"negative";
  const rows=commission(c);
  const provisionsfrei=Number(c.stageSnapshot||0)===0;

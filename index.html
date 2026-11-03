@@ -523,6 +523,7 @@ tbody tr:hover{background:#f9fbfe!important}
         </div>
         <select id="financePeriodFilter" class="period-filter-select"></select>
       </div>
+      <div class="muted" style="margin:12px 0 8px"><b>Auftragswerte nach Abschlussdatum</b> – die folgenden Projektwerte bleiben dem Abschlusszeitraum zugeordnet. „Bereits erhalten“ und „Bereits bezahlt“ zeigen die gesamten Buchungen dieser Projekte, unabhängig vom Zahlungsjahr.</div>
       <div class="metric-grid">
         <div class="metric card"><span>VK tatsächlich + Upsale</span><b id="finIncome">0 €</b></div>
         <div class="metric card"><span>Bereits erhalten</span><b id="finReceived">0 €</b></div>
@@ -530,6 +531,21 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="metric card"><span>Erwartete Ausgaben</span><b id="finExpenses">0 €</b></div>
         <div class="metric card"><span>Bereits bezahlte Ausgaben</span><b id="finPaidExpenses">0 €</b></div>
         <div class="metric card fin-highlight-expense"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-head">
+          <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Enthält auch Zahlungen für Projekte aus früheren Abschlussjahren. Für die Zuordnung zählt ausschließlich das gespeicherte Zahlungsdatum.</div></div>
+          <div><label for="financeCashPeriodFilter">Zahlungszeitraum</label><select id="financeCashPeriodFilter" class="period-filter-select"></select></div>
+        </div>
+        <div class="metric-grid" style="margin-top:12px">
+          <div class="metric card"><span>Zahlungseingänge</span><b id="finCashReceived">0 €</b></div>
+          <div class="metric card"><span>Bezahlte Ausgaben</span><b id="finCashExpenses">0 €</b></div>
+          <div class="metric card"><span>Zahlungsüberschuss</span><b id="finCashBalance">0 €</b></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr><th>Zahlungsdatum</th><th>Kunde / Projekt</th><th>Art / Position</th><th>Eingang</th><th>Ausgang</th><th>Aktion</th></tr></thead>
+          <tbody id="finCashRows"></tbody>
+        </table></div>
       </div>
       <div class="card">
         <div class="section-head">
@@ -563,7 +579,7 @@ tbody tr:hover{background:#f9fbfe!important}
         </div>
         <div class="table-wrap" style="margin-top:12px">
           <table>
-            <thead><tr><th>Position</th><th>Betrag</th><th>Bezahlt</th><th>Offen</th><th>Aktion</th></tr></thead>
+            <thead><tr><th>Position</th><th>Betrag</th><th>Bezahlt</th><th>Offen</th><th>Zahlungsdatum</th><th>Aktion</th></tr></thead>
             <tbody id="financeCostRows"></tbody>
           </table>
         </div>
@@ -1256,6 +1272,45 @@ renderAll();
 
 <script id="finance-v12-4">
 let financeCustomerPayments=[]; let financeExpensePayments=[]; let financeCostProjectId=null; let financePaymentsProjectId=null;
+let financeCashPeriodFilter=localStorage.getItem('su_finance_cash_period')||String(new Date().getFullYear());
+function financeCashPeriodMatches(date){
+ const d=String(date||'');
+ return financeCashPeriodFilter==='all'||d.startsWith(financeCashPeriodFilter);
+}
+function renderFinanceCash(){
+ const el=document.getElementById('financeCashPeriodFilter');if(!el)return;
+ const years=new Set([2025,2026,new Date().getFullYear()]);
+ [...financeCustomerPayments,...financeExpensePayments].forEach(x=>{
+   const y=Number(String(x.payment_date||x.paid_date||'').slice(0,4));
+   if(y>=2000&&y<=2100)years.add(y);
+ });
+ let options='<option value="all">Alle Jahre</option>';
+ [...years].sort((a,b)=>b-a).forEach(y=>{
+   options+='<option value="'+y+'">'+y+'</option>';
+   for(let m=1;m<=12;m++){
+     const ym=y+'-'+String(m).padStart(2,'0');
+     options+='<option value="'+ym+'">'+(typeof MONTH_NAMES!=='undefined'?MONTH_NAMES[m-1]:String(m))+' '+y+'</option>';
+   }
+ });
+ el.innerHTML=options;
+ if(![...el.options].some(o=>o.value===financeCashPeriodFilter))financeCashPeriodFilter='all';
+ el.value=financeCashPeriodFilter;
+ el.onchange=()=>{financeCashPeriodFilter=el.value;localStorage.setItem('su_finance_cash_period',financeCashPeriodFilter);renderFinanceCash();};
+ const projects=new Map(state.customers.map(c=>[c.id,c]));
+ const entries=[];
+ financeCustomerPayments.filter(x=>financeCashPeriodMatches(x.payment_date)).forEach(x=>entries.push({date:x.payment_date,project:projects.get(x.project_id),type:'Zahlungseingang',income:n(x.amount),expense:0,action:'income',id:x.project_id}));
+ financeExpensePayments.filter(x=>financeCashPeriodMatches(x.paid_date)).forEach(x=>{
+   const c=projects.get(x.project_id),label=FIN_COSTS.find(([k])=>k===x.cost_key)?.[1]||x.cost_key;
+   entries.push({date:x.paid_date,project:c,type:'Ausgabe: '+(c?financeCostLabel(c,x.cost_key,label):label),income:0,expense:n(x.paid_amount),action:'expense',id:x.project_id});
+ });
+ entries.sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+ const received=entries.reduce((a,x)=>a+x.income,0),expenses=entries.reduce((a,x)=>a+x.expense,0);
+ document.getElementById('finCashReceived').textContent=money(received);
+ document.getElementById('finCashExpenses').textContent=money(expenses);
+ document.getElementById('finCashBalance').textContent=money(received-expenses);
+ const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ document.getElementById('finCashRows').innerHTML=entries.length?entries.map(x=>`<tr><td>${esc(x.date||'—')}</td><td>${esc(x.project?.customer||'Projekt nicht geladen')}<div class="muted">${esc(x.project?.projectName||'')}</div></td><td>${esc(x.type)}</td><td>${x.income?money(x.income):'—'}</td><td>${x.expense?money(x.expense):'—'}</td><td>${x.project?`<button type="button" class="btn ghost fin-cash-edit" data-id="${esc(x.id)}" data-kind="${x.action}">Bearbeiten</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="6" class="muted">Keine Geldbewegungen in diesem Zahlungszeitraum.</td></tr>';
+}
 const FIN_COSTS=[['desoha','DESOHA'],['accomponents','AC-Komponenten'],['dcmontage','DC-Montage'],['acmontage','AC-Montage'],['project','Projektierung / Kleinmaterial'],['custom','Weitere Kosten'],['other','Sonstiges']];
 
 function financeExpectedIncome(c){
@@ -1283,6 +1338,7 @@ async function loadFinanceData(){
   financeCustomerPayments=a.data||[];
   financeExpensePayments=b.data||[];
   renderFinance();
+  renderFinanceCash();
   if(financeCostProjectId) renderFinanceCostModal(financeCostProjectId);
   if(financePaymentsProjectId) renderFinancePaymentsModal(financePaymentsProjectId);
 }
@@ -1329,6 +1385,7 @@ function renderFinance(){
   document.getElementById('finExpenses').textContent=money(te);
   document.getElementById('finPaidExpenses').textContent=money(tp);
   document.getElementById('finOpenExpenses').textContent=money(Math.max(0,te-tp));
+  renderFinanceCash();
 }
 
 async function financeAddPayment(projectId,amount,date,note=''){
@@ -1423,6 +1480,7 @@ function renderFinanceCostModal(projectId){
       <td>${money(target)}</td>
       <td class="${paid>0?'positive':''}">${money(paid)}</td>
       <td class="${open>0?'negative':'positive'}">${money(open)}</td>
+      <td>${paid>0?`<input class="fin-expense-date" data-id="${c.id}" data-key="${k}" type="date" value="${financeExpensePayments.find(x=>x.project_id===c.id&&x.cost_key===k)?.paid_date||''}" style="min-width:135px"><button class="btn ghost fin-expense-date-save" data-id="${c.id}" data-key="${k}" type="button">Datum speichern</button>`:'—'}</td>
       <td>
         <button class="btn ${done?'ghost':'primary'} fin-cost-toggle" data-id="${c.id}" data-key="${k}" type="button" ${target<=0?'disabled':''}>
           ${target<=0?'Kein Betrag':done?'Wieder öffnen':'Als gezahlt markieren'}
@@ -1484,6 +1542,22 @@ document.addEventListener('click',async e=>{
     }
     if(e.target.classList.contains('fin-costs')){
       renderFinanceCostModal(e.target.dataset.id);
+    }
+    if(e.target.classList.contains('fin-cash-edit')){
+      const id=e.target.dataset.id;
+      if(e.target.dataset.kind==='income')renderFinancePaymentsModal(id);
+      else renderFinanceCostModal(id);
+    }
+    if(e.target.classList.contains('fin-expense-date-save')){
+      const id=e.target.dataset.id,key=e.target.dataset.key;
+      const input=document.querySelector(`.fin-expense-date[data-id="${id}"][data-key="${key}"]`);
+      if(!input?.value)throw new Error('Bitte ein gültiges Zahlungsdatum auswählen.');
+      const current=financeExpensePayments.find(x=>x.project_id===id&&x.cost_key===key);
+      if(!current)throw new Error('Ausgabenbuchung nicht gefunden.');
+      const result=await cloud.from('project_expense_payments').update({paid_date:input.value}).eq('id',current.id).select('id');
+      if(result.error)throw result.error;
+      if(!result.data?.length)throw new Error('Keine Berechtigung zum Ändern dieser Buchung.');
+      await loadFinanceData();
     }
     if(e.target.classList.contains('fin-cost-toggle')){
       const id=e.target.dataset.id,key=e.target.dataset.key;

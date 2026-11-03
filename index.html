@@ -539,7 +539,7 @@ tbody tr:hover{background:#f9fbfe!important}
       </div>
       <div class="card" style="margin-bottom:16px">
         <div class="section-head">
-          <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Zahlungseingänge und Ausgaben aus allen Projekten, unabhängig vom Abschlussjahr. Der Zahlungszeitraum wird im Reiter „Buchungen nachbearbeiten“ gewählt.</div></div>
+          <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Zahlungseingänge und Ausgaben aus allen Projekten, unabhängig vom Abschlussjahr. Der Zeitraum richtet sich nach dem Jahres- oder Monatsfilter oben.</div></div>
         </div>
         <div class="metric-grid" style="margin-top:12px">
           <div class="metric card"><span>Zahlungseingänge</span><b id="finCashReceived">0 €</b></div>
@@ -571,7 +571,7 @@ tbody tr:hover{background:#f9fbfe!important}
       <div class="card" style="margin-bottom:16px">
         <div class="section-head">
           <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Enthält auch Zahlungen für Projekte aus früheren Abschlussjahren. Für die Zuordnung zählt ausschließlich das gespeicherte Zahlungsdatum.</div></div>
-          <div><label for="financeCashPeriodFilter">Zahlungszeitraum</label><select id="financeCashPeriodFilter" class="period-filter-select"></select></div>
+          <div class="muted">Zeitraum wie in „Finanzübersicht Baustellen“ eingestellt</div>
         </div>
         <div class="table-wrap" style="margin-top:12px"><table>
           <thead><tr><th>Zahlungsdatum</th><th>Kunde / Projekt</th><th>Art / Position</th><th>Eingang</th><th>Ausgang</th><th>Aktion</th></tr></thead>
@@ -1285,10 +1285,9 @@ renderAll();
 
 <script id="finance-v12-4">
 let financeCustomerPayments=[]; let financeExpensePayments=[]; let financeCostProjectId=null; let financePaymentsProjectId=null;
-let financeCashPeriodFilter=localStorage.getItem('su_finance_cash_period')||String(new Date().getFullYear());
 function financeCashPeriodMatches(date){
  const d=String(date||'');
- return financeCashPeriodFilter==='all'||d.startsWith(financeCashPeriodFilter);
+ return periodFilter==='all'||d.startsWith(periodFilter);
 }
 document.addEventListener('click',e=>{
  const btn=e.target.closest('[data-finance-tab]');
@@ -1299,24 +1298,6 @@ document.addEventListener('click',e=>{
  document.getElementById('financeBookingsPanel').classList.toggle('active',key==='bookings');
 });
 function renderFinanceCash(){
- const el=document.getElementById('financeCashPeriodFilter');if(!el)return;
- const years=new Set([2025,2026,new Date().getFullYear()]);
- [...financeCustomerPayments,...financeExpensePayments].forEach(x=>{
-   const y=Number(String(x.payment_date||x.paid_date||'').slice(0,4));
-   if(y>=2000&&y<=2100)years.add(y);
- });
- let options='<option value="all">Alle Jahre</option>';
- [...years].sort((a,b)=>b-a).forEach(y=>{
-   options+='<option value="'+y+'">'+y+'</option>';
-   for(let m=1;m<=12;m++){
-     const ym=y+'-'+String(m).padStart(2,'0');
-     options+='<option value="'+ym+'">'+(typeof MONTH_NAMES!=='undefined'?MONTH_NAMES[m-1]:String(m))+' '+y+'</option>';
-   }
- });
- el.innerHTML=options;
- if(![...el.options].some(o=>o.value===financeCashPeriodFilter))financeCashPeriodFilter='all';
- el.value=financeCashPeriodFilter;
- el.onchange=()=>{financeCashPeriodFilter=el.value;localStorage.setItem('su_finance_cash_period',financeCashPeriodFilter);renderFinanceCash();};
  const projects=new Map(state.customers.map(c=>[c.id,c]));
  const entries=[];
  financeCustomerPayments.filter(x=>financeCashPeriodMatches(x.payment_date)).forEach(x=>entries.push({date:x.payment_date,project:projects.get(x.project_id),type:'Zahlungseingang',income:n(x.amount),expense:0,action:'income',id:x.project_id}));

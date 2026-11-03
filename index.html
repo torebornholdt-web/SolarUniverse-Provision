@@ -537,6 +537,16 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="metric card"><span>Bereits bezahlte Ausgaben</span><b id="finPaidExpenses">0 €</b></div>
         <div class="metric card fin-highlight-expense"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
       </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-head">
+          <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Zahlungseingänge und Ausgaben aus allen Projekten, unabhängig vom Abschlussjahr. Der Zahlungszeitraum wird im Reiter „Buchungen nachbearbeiten“ gewählt.</div></div>
+        </div>
+        <div class="metric-grid" style="margin-top:12px">
+          <div class="metric card"><span>Zahlungseingänge</span><b id="finCashReceived">0 €</b></div>
+          <div class="metric card"><span>Bezahlte Ausgaben</span><b id="finCashExpenses">0 €</b></div>
+          <div class="metric card"><span>Zahlungsüberschuss</span><b id="finCashBalance">0 €</b></div>
+        </div>
+      </div>
       <div class="card">
         <div class="section-head">
           <div>
@@ -562,11 +572,6 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="section-head">
           <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Enthält auch Zahlungen für Projekte aus früheren Abschlussjahren. Für die Zuordnung zählt ausschließlich das gespeicherte Zahlungsdatum.</div></div>
           <div><label for="financeCashPeriodFilter">Zahlungszeitraum</label><select id="financeCashPeriodFilter" class="period-filter-select"></select></div>
-        </div>
-        <div class="metric-grid" style="margin-top:12px">
-          <div class="metric card"><span>Zahlungseingänge</span><b id="finCashReceived">0 €</b></div>
-          <div class="metric card"><span>Bezahlte Ausgaben</span><b id="finCashExpenses">0 €</b></div>
-          <div class="metric card"><span>Zahlungsüberschuss</span><b id="finCashBalance">0 €</b></div>
         </div>
         <div class="table-wrap" style="margin-top:12px"><table>
           <thead><tr><th>Zahlungsdatum</th><th>Kunde / Projekt</th><th>Art / Position</th><th>Eingang</th><th>Ausgang</th><th>Aktion</th></tr></thead>

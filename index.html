@@ -577,6 +577,13 @@ tbody tr:hover{background:#f9fbfe!important}
           <thead><tr><th>Zahlungsdatum</th><th>Kunde / Projekt</th><th>Art / Position</th><th>Eingang</th><th>Ausgang</th><th>Aktion</th></tr></thead>
           <tbody id="finCashRows"></tbody>
         </table></div>
+        <div style="margin-top:20px"><h3>Ausgabenbuchungen – Zahlungsjahr nachträglich ändern</h3>
+          <div class="muted">Alle bezahlten Kostenpositionen, auch aus anderen Jahren. Nur das Zahlungsjahr wird geändert; Betrag, Monat und Tag bleiben soweit möglich erhalten.</div>
+          <div class="table-wrap" style="margin-top:10px"><table>
+            <thead><tr><th>Kunde / Projekt</th><th>Kostenposition</th><th>Bezahlt</th><th>Bisheriges Datum</th><th>Neues Jahr</th><th>Aktion</th></tr></thead>
+            <tbody id="finExpenseYearRows"></tbody>
+          </table></div>
+        </div>
       </div>
       </div>
     </section>
@@ -1312,6 +1319,15 @@ function renderFinanceCash(){
  document.getElementById('finCashBalance').textContent=money(received-expenses);
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  document.getElementById('finCashRows').innerHTML=entries.length?entries.map(x=>`<tr><td>${esc(x.date||'—')}</td><td>${esc(x.project?.customer||'Projekt nicht geladen')}<div class="muted">${esc(x.project?.projectName||'')}</div></td><td>${esc(x.type)}</td><td>${x.income?money(x.income):'—'}</td><td>${x.expense?money(x.expense):'—'}</td><td>${x.project?`<button type="button" class="btn ghost fin-cash-edit" data-id="${esc(x.id)}" data-kind="${x.action}">Bearbeiten</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="6" class="muted">Keine Geldbewegungen in diesem Zahlungszeitraum.</td></tr>';
+ const expenseYears=new Set([2024,2025,2026,new Date().getFullYear()]);
+ financeExpensePayments.forEach(x=>{const y=Number(String(x.paid_date||'').slice(0,4));if(y>=2000&&y<=2100)expenseYears.add(y);});
+ const yearOptions=[...expenseYears].sort((a,b)=>b-a);
+ document.getElementById('finExpenseYearRows').innerHTML=financeExpensePayments.length?financeExpensePayments.slice().sort((a,b)=>String(b.paid_date||'').localeCompare(String(a.paid_date||''))).map(x=>{
+   const c=projects.get(x.project_id);
+   const label=FIN_COSTS.find(([k])=>k===x.cost_key)?.[1]||x.cost_key;
+   const year=String(x.paid_date||'').slice(0,4);
+   return `<tr><td>${esc(c?.customer||'Projekt nicht geladen')}</td><td>${esc(c?financeCostLabel(c,x.cost_key,label):label)}</td><td>${money(n(x.paid_amount))}</td><td>${esc(x.paid_date||'—')}</td><td><select class="fin-expense-year" data-payment-id="${esc(x.id)}">${yearOptions.map(y=>`<option value="${y}" ${String(y)===year?'selected':''}>${y}</option>`).join('')}</select></td><td><button type="button" class="btn primary fin-expense-year-save" data-payment-id="${esc(x.id)}">Jahr speichern</button></td></tr>`;
+ }).join(''):'<tr><td colspan="6" class="muted">Keine bezahlten Kostenpositionen vorhanden.</td></tr>';
 }
 const FIN_COSTS=[['desoha','DESOHA'],['accomponents','AC-Komponenten'],['dcmontage','DC-Montage'],['acmontage','AC-Montage'],['project','Projektierung / Kleinmaterial'],['custom','Weitere Kosten'],['other','Sonstiges']];
 
@@ -1549,6 +1565,29 @@ document.addEventListener('click',async e=>{
       const id=e.target.dataset.id;
       if(e.target.dataset.kind==='income')renderFinancePaymentsModal(id);
       else renderFinanceCostModal(id);
+    }
+    if(e.target.classList.contains('fin-expense-year-save')){
+      const btn=e.target,id=btn.dataset.paymentId;
+      const current=financeExpensePayments.find(x=>x.id===id);
+      const select=document.querySelector(`.fin-expense-year[data-payment-id="${id}"]`);
+      if(!current||!select)throw new Error('Ausgabenbuchung nicht gefunden.');
+      const year=Number(select.value);
+      if(!Number.isInteger(year)||year<2000||year>2100)throw new Error('Ungültiges Jahr.');
+      const oldDate=String(current.paid_date||'');
+      const suffix=/^\\d{4}-\\d{2}-\\d{2}$/.test(oldDate)?oldDate.slice(4):'-01-01';
+      let newDate=String(year)+suffix;
+      if(Number.isNaN(Date.parse(newDate))||new Date(newDate).toISOString().slice(0,10)!==newDate){
+        newDate=String(year)+'-02-28';
+      }
+      if(newDate===oldDate)return;
+      btn.disabled=true;
+      try{
+        const result=await cloud.from('project_expense_payments').update({paid_date:newDate}).eq('id',id).select('id');
+        if(result.error)throw result.error;
+        if(!result.data?.length)throw new Error('Keine Berechtigung zum Ändern dieser Ausgabenbuchung.');
+        await loadFinanceData();
+        showSaveToast('Zahlungsjahr gespeichert');
+      }finally{btn.disabled=false;}
     }
     if(e.target.classList.contains('fin-expense-date-save')){
       const id=e.target.dataset.id,key=e.target.dataset.key;

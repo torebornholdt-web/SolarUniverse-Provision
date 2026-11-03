@@ -1322,7 +1322,7 @@ function renderFinanceCash(){
  const expenseYears=new Set([2024,2025,2026,new Date().getFullYear()]);
  financeExpensePayments.forEach(x=>{const y=Number(String(x.paid_date||'').slice(0,4));if(y>=2000&&y<=2100)expenseYears.add(y);});
  const yearOptions=[...expenseYears].sort((a,b)=>b-a);
- document.getElementById('finExpenseYearRows').innerHTML=financeExpensePayments.length?financeExpensePayments.slice().sort((a,b)=>String(b.paid_date||'').localeCompare(String(a.paid_date||''))).map(x=>{
+ document.getElementById('finExpenseYearRows').innerHTML=financeExpensePayments.length?financeExpensePayments.slice().sort((a,b)=>String(projects.get(a.project_id)?.date||'').localeCompare(String(projects.get(b.project_id)?.date||'')) || String(a.paid_date||'').localeCompare(String(b.paid_date||''))).map(x=>{
    const c=projects.get(x.project_id);
    const label=FIN_COSTS.find(([k])=>k===x.cost_key)?.[1]||x.cost_key;
    const year=String(x.paid_date||'').slice(0,4);

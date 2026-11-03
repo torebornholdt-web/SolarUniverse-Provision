@@ -688,15 +688,15 @@ tbody tr:hover{background:#f9fbfe!important}
 
       <div class="tab-panel" id="tab-commission">
         <div class="card">
-          <h3>Provisionsberechnung pro Berater</h3>
+          <h3>Provisionsübersicht pro Berater</h3>
           <div class="table-wrap"><table id="commissionTable">
-            <thead><tr>
-              <th>Berater</th><th>Anteil brutto</th><th>Provision brutto kalk.</th><th>Provision netto kalk.</th>
-              <th>80 % brutto</th><th>80 % netto</th><th>Provision brutto final</th><th>Provision netto final</th><th>Rest brutto</th><th>Rest netto</th>
-            </tr></thead>
-            <tbody id="commissionRows"></tbody>
-            <tfoot id="commissionFoot"></tfoot>
+            <thead><tr><th>Name</th><th>Anteil brutto</th><th>80 % netto kalk.</th><th>80 % brutto kalk.</th><th>Gesamt netto kalk.</th><th>Gesamt brutto kalk.</th><th>Bereits gezahlt netto</th><th>Bereits gezahlt brutto</th><th>Noch zu erwarten netto</th><th>Noch zu erwarten brutto</th></tr></thead>
+            <tbody id="commissionRows"></tbody><tfoot id="commissionFoot"></tfoot>
           </table></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>Provisionen Final</h3>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Netto</th><th>Brutto</th></tr></thead><tbody id="commissionFinalRows"></tbody><tfoot id="commissionFinalFoot"></tfoot></table></div>
         </div>
       </div>
 
@@ -1063,9 +1063,12 @@ function renderProjectComputed(){
  $("overheadDisplay").value=provisionsfrei?"Provisionsfreier Verkauf – kein Overhead":((c.overheadSnapshots||[]).map(o=>o.name).join(" → ")||"Kein Overhead");
  $("addPayment").disabled=provisionsfrei||rows.length===0;
  $("advisorCommissionRows").innerHTML=provisionsfrei?`<tr><td>${advisor(c.advisorId)?.name||"Berater"}</td><td>Provisionsfrei</td><td>${pct(0)}</td><td><b>${pct(0)}</b></td></tr>`:rows.map(r=>`<tr><td>${r.name}</td><td>${r.role}</td><td>${pct(r.stage||r.rate)}</td><td><b>${pct(r.rate)}</b></td></tr>`).join("");
- $("commissionRows").innerHTML=provisionsfrei?`<tr><td>${advisor(c.advisorId)?.name||"Berater"} <span class="muted">(provisionsfrei)</span></td><td>${pct(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td>${money(0)}</td><td class="positive">${money(0)}</td><td class="positive">${money(0)}</td></tr>`:rows.map(r=>`<tr><td>${r.name}</td><td>${pct(r.rate)}</td><td>${money(r.grossCalc)}</td><td>${money(r.netCalc)}</td><td>${money(r.gross80)}</td><td>${money(r.net80)}</td><td>${money(r.grossFinal)}</td><td>${money(r.netFinal)}</td><td class="${r.restGross>=0?"positive":"negative"}">${money(r.restGross)}</td><td class="${r.rest>=0?"positive":"negative"}">${money(r.rest)}</td></tr>`).join("");
- const s=rows.reduce((a,r)=>Object.fromEntries(Object.keys(a).map(k=>[k,a[k]+(r[k]||0)])),{rate:0,grossCalc:0,netCalc:0,gross80:0,net80:0,grossFinal:0,netFinal:0,restGross:0,rest:0});
- $("commissionFoot").innerHTML=`<tr><th>Gesamt</th><th>${pct(s.rate)}</th><th>${money(s.grossCalc)}</th><th>${money(s.netCalc)}</th><th>${money(s.gross80)}</th><th>${money(s.net80)}</th><th>${money(s.grossFinal)}</th><th>${money(s.netFinal)}</th><th>${money(s.restGross)}</th><th>${money(s.rest)}</th></tr>`;
+ const displayRows=provisionsfrei?[{name:(advisor(c.advisorId)?.name||"Berater")+" (provisionsfrei)",rate:0,grossCalc:0,netCalc:0,gross80:0,net80:0,grossFinal:0,netFinal:0,paidNet:0,paidGross:0,rest:0,restGross:0}]:rows;
+ $("commissionRows").innerHTML=displayRows.map(r=>`<tr><td>${r.name}</td><td>${pct(r.rate)}</td><td>${money(r.net80)}</td><td>${money(r.gross80)}</td><td>${money(r.netCalc)}</td><td>${money(r.grossCalc)}</td><td>${money(r.paidNet)}</td><td>${money(r.paidGross)}</td><td class="${r.rest>=0?"positive":"negative"}">${money(r.rest)}</td><td class="${r.restGross>=0?"positive":"negative"}">${money(r.restGross)}</td></tr>`).join("");
+ const s=rows.reduce((a,r)=>Object.fromEntries(Object.keys(a).map(k=>[k,a[k]+(r[k]||0)])),{rate:0,grossCalc:0,netCalc:0,gross80:0,net80:0,grossFinal:0,netFinal:0,paidNet:0,paidGross:0,restGross:0,rest:0});
+ $("commissionFoot").innerHTML=`<tr><th>Gesamt</th><th>${pct(s.rate)}</th><th>${money(s.net80)}</th><th>${money(s.gross80)}</th><th>${money(s.netCalc)}</th><th>${money(s.grossCalc)}</th><th>${money(s.paidNet)}</th><th>${money(s.paidGross)}</th><th>${money(s.rest)}</th><th>${money(s.restGross)}</th></tr>`;
+ $("commissionFinalRows").innerHTML=displayRows.map(r=>`<tr><td>${r.name}</td><td>${money(r.netFinal)}</td><td>${money(r.grossFinal)}</td></tr>`).join("");
+ $("commissionFinalFoot").innerHTML=`<tr><th>Gesamt</th><th>${money(s.netFinal)}</th><th>${money(s.grossFinal)}</th></tr>`;
  $("costSummaryRows").innerHTML=COSTS.map(([k,n])=>{const label=k==="custom"?(c.customCostLabel||"Weitere Kosten"):k==="other"?(c.otherCostLabel||"Sonstiges"):n;return `<tr><td>${label}</td><td>${money(c.calc[k])}</td><td>${money(c.actual[k])}</td><td>${money((c.actual[k]||0)-(c.calc[k]||0))}</td></tr>`}).join("");
 }
 function renderAdvisors(){

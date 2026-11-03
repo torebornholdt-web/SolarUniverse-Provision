@@ -516,6 +516,11 @@ tbody tr:hover{background:#f9fbfe!important}
     </section>
 
     <section id="finance" class="view">
+      <div class="tabs" id="financeSubTabs">
+        <button class="tab active" type="button" data-finance-tab="overview">Finanzübersicht Baustellen</button>
+        <button class="tab" type="button" data-finance-tab="bookings">Buchungen nachbearbeiten</button>
+      </div>
+      <div id="financeOverviewPanel" class="tab-panel active">
       <div class="period-filter-bar card">
         <div>
           <b>Zeitraum</b>
@@ -531,21 +536,6 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="metric card"><span>Erwartete Ausgaben</span><b id="finExpenses">0 €</b></div>
         <div class="metric card"><span>Bereits bezahlte Ausgaben</span><b id="finPaidExpenses">0 €</b></div>
         <div class="metric card fin-highlight-expense"><span>Noch offene Ausgaben</span><b id="finOpenExpenses">0 €</b></div>
-      </div>
-      <div class="card" style="margin-bottom:16px">
-        <div class="section-head">
-          <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Enthält auch Zahlungen für Projekte aus früheren Abschlussjahren. Für die Zuordnung zählt ausschließlich das gespeicherte Zahlungsdatum.</div></div>
-          <div><label for="financeCashPeriodFilter">Zahlungszeitraum</label><select id="financeCashPeriodFilter" class="period-filter-select"></select></div>
-        </div>
-        <div class="metric-grid" style="margin-top:12px">
-          <div class="metric card"><span>Zahlungseingänge</span><b id="finCashReceived">0 €</b></div>
-          <div class="metric card"><span>Bezahlte Ausgaben</span><b id="finCashExpenses">0 €</b></div>
-          <div class="metric card"><span>Zahlungsüberschuss</span><b id="finCashBalance">0 €</b></div>
-        </div>
-        <div class="table-wrap" style="margin-top:12px"><table>
-          <thead><tr><th>Zahlungsdatum</th><th>Kunde / Projekt</th><th>Art / Position</th><th>Eingang</th><th>Ausgang</th><th>Aktion</th></tr></thead>
-          <tbody id="finCashRows"></tbody>
-        </table></div>
       </div>
       <div class="card">
         <div class="section-head">
@@ -565,6 +555,24 @@ tbody tr:hover{background:#f9fbfe!important}
             <tbody id="financeRows"></tbody>
           </table>
         </div>
+      </div>
+      </div>
+      <div id="financeBookingsPanel" class="tab-panel">
+      <div class="card" style="margin-bottom:16px">
+        <div class="section-head">
+          <div><h2>Geldbewegungen nach Zahlungsdatum</h2><div class="muted">Enthält auch Zahlungen für Projekte aus früheren Abschlussjahren. Für die Zuordnung zählt ausschließlich das gespeicherte Zahlungsdatum.</div></div>
+          <div><label for="financeCashPeriodFilter">Zahlungszeitraum</label><select id="financeCashPeriodFilter" class="period-filter-select"></select></div>
+        </div>
+        <div class="metric-grid" style="margin-top:12px">
+          <div class="metric card"><span>Zahlungseingänge</span><b id="finCashReceived">0 €</b></div>
+          <div class="metric card"><span>Bezahlte Ausgaben</span><b id="finCashExpenses">0 €</b></div>
+          <div class="metric card"><span>Zahlungsüberschuss</span><b id="finCashBalance">0 €</b></div>
+        </div>
+        <div class="table-wrap" style="margin-top:12px"><table>
+          <thead><tr><th>Zahlungsdatum</th><th>Kunde / Projekt</th><th>Art / Position</th><th>Eingang</th><th>Ausgang</th><th>Aktion</th></tr></thead>
+          <tbody id="finCashRows"></tbody>
+        </table></div>
+      </div>
       </div>
     </section>
 
@@ -1277,6 +1285,14 @@ function financeCashPeriodMatches(date){
  const d=String(date||'');
  return financeCashPeriodFilter==='all'||d.startsWith(financeCashPeriodFilter);
 }
+document.addEventListener('click',e=>{
+ const btn=e.target.closest('[data-finance-tab]');
+ if(!btn)return;
+ const key=btn.dataset.financeTab;
+ document.querySelectorAll('#financeSubTabs [data-finance-tab]').forEach(x=>x.classList.toggle('active',x===btn));
+ document.getElementById('financeOverviewPanel').classList.toggle('active',key==='overview');
+ document.getElementById('financeBookingsPanel').classList.toggle('active',key==='bookings');
+});
 function renderFinanceCash(){
  const el=document.getElementById('financeCashPeriodFilter');if(!el)return;
  const years=new Set([2025,2026,new Date().getFullYear()]);

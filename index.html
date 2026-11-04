@@ -521,6 +521,17 @@ tbody tr:hover{background:#f9fbfe!important}
         <button class="tab" type="button" data-finance-tab="bookings">Buchungen nachbearbeiten</button>
       </div>
       <div id="financeOverviewPanel" class="tab-panel active">
+      <div class="card" style="margin-bottom:16px">
+        <h2>Gesamtprognose – Zahlungseingänge und offene Beträge</h2>
+        <div class="muted">Bezahlte Beträge nach ausgewähltem Zahlungszeitraum plus alle noch offenen Beträge aus sämtlichen Projekten. Keine reine Jahresgewinnrechnung.</div>
+        <div class="metric-grid" style="margin-top:12px">
+          <div class="metric card fin-highlight-income"><span>Einnahmen inkl. offener Kundenzahlungen</span><b id="finForecastIncome">0 €</b></div>
+          <div class="metric card fin-highlight-expense"><span>Ausgaben inkl. offener Kosten</span><b id="finForecastExpenses">0 €</b></div>
+          <div class="metric card"><span>Zu erwartender Überschuss</span><b id="finForecastBalance">0 €</b></div>
+        </div>
+        <div class="muted" id="finForecastDetails" style="margin-top:10px"></div>
+      </div>
+
       <div class="period-filter-bar card">
         <div>
           <b>Zeitraum</b>
@@ -1317,6 +1328,14 @@ function renderFinanceCash(){
  document.getElementById('finCashReceived').textContent=money(received);
  document.getElementById('finCashExpenses').textContent=money(expenses);
  document.getElementById('finCashBalance').textContent=money(received-expenses);
+ const allOpenIncome=state.customers.reduce((sum,c)=>sum+Math.max(0,financeExpectedIncome(c)-financeReceived(c.id)),0);
+ const allOpenExpenses=state.customers.reduce((sum,c)=>sum+Math.max(0,financeExpectedExpenses(c)-financeExpensePaid(c.id)),0);
+ const forecastIncome=received+allOpenIncome,forecastExpenses=expenses+allOpenExpenses;
+ document.getElementById('finForecastIncome').textContent=money(forecastIncome);
+ document.getElementById('finForecastExpenses').textContent=money(forecastExpenses);
+ document.getElementById('finForecastBalance').textContent=money(forecastIncome-forecastExpenses);
+ document.getElementById('finForecastDetails').textContent='Eingänge im Zahlungszeitraum: '+money(received)+' + offene Kundenzahlungen gesamt: '+money(allOpenIncome)+' | Bezahlte Ausgaben im Zahlungszeitraum: '+money(expenses)+' + offene Kosten gesamt: '+money(allOpenExpenses);
+
  const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  document.getElementById('finCashRows').innerHTML=entries.length?entries.map(x=>`<tr><td>${esc(x.date||'—')}</td><td>${esc(x.project?.customer||'Projekt nicht geladen')}<div class="muted">${esc(x.project?.projectName||'')}</div></td><td>${esc(x.type)}</td><td>${x.income?money(x.income):'—'}</td><td>${x.expense?money(x.expense):'—'}</td><td>${x.project?`<button type="button" class="btn ghost fin-cash-edit" data-id="${esc(x.id)}" data-kind="${x.action}">Bearbeiten</button>`:'—'}</td></tr>`).join(''):'<tr><td colspan="6" class="muted">Keine Geldbewegungen in diesem Zahlungszeitraum.</td></tr>';
  const expenseYears=new Set([2024,2025,2026,new Date().getFullYear()]);

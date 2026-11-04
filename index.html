@@ -508,7 +508,7 @@ tbody tr:hover{background:#f9fbfe!important}
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Kunde</th><th>Projekt</th><th><button class="sort-head" id="sortDate" type="button">Abschlussdatum <span id="sortDateIcon">↓</span></button></th><th>Berater</th><th>80 %</th><th>Abschluss</th><th>Status</th><th>VK netto</th><th>Rohertrag kalk.</th></tr></thead>
+            <thead><tr><th>Kunde</th><th>Projekt</th><th><button class="sort-head" id="sortDate" type="button">Abschlussdatum <span id="sortDateIcon">↓</span></button></th><th>Berater</th><th>80 %</th><th>Abschluss</th><th>Status</th><th>VK netto tatsächlich</th><th>Rohertrag kalk.</th></tr></thead>
             <tbody id="customerRows"></tbody>
           </table>
         </div>
@@ -551,7 +551,7 @@ tbody tr:hover{background:#f9fbfe!important}
         <div class="section-head">
           <div>
             <h2>Finanzübersicht Baustellen</h2>
-            <div class="muted">Nur Admin. Die erwarteten Einnahmen entsprechen dem tatsächlichen VK zuzüglich des tatsächlichen Upsales. Zahlungseingänge können direkt je Baustelle erfasst werden.</div>
+            <div class="muted">Nur Admin. Die erwarteten Einnahmen entsprechen dem tatsächlichen VK zuzüglich des tatsächlichen Upsales abzüglich des tatsächlichen Nachlasses. Zahlungseingänge können direkt je Baustelle erfasst werden.</div>
           </div>
         </div>
         <div class="table-wrap">
@@ -1023,7 +1023,7 @@ function renderCustomers(){
   const completed=String(c.status||"").trim().toLowerCase()==="abgeschlossen";
   const firstPaid=provisionOverviewStatus(c,"first").cls==="paid";
   const customerMarker=completed?'<span class="completion-dot" title="Projekt abgeschlossen"></span>':(firstPaid?'<span class="payout80-dot" title="80 % Provision ausgezahlt">80</span>':'<span class="completion-dot-placeholder"></span>');
-  tr.innerHTML=`<td><div class="customer-name-with-dot">${customerMarker}<b>${c.customer}</b></div></td><td>${c.projectName}</td><td>${formatDateDE(c.date)}</td><td>${advisor(c.advisorId)?.name||""}</td><td class="status-cell"><span class="status ${firstStatus.cls}">${firstStatus.label}</span></td><td class="status-cell"><span class="status ${finalStatus.cls}">${finalStatus.label}</span></td><td>${c.status}</td><td>${money(c.calc.vk)}</td><td>${money(e.gp)}</td>`;
+  tr.innerHTML=`<td><div class="customer-name-with-dot">${customerMarker}<b>${c.customer}</b></div></td><td>${c.projectName}</td><td>${formatDateDE(c.date)}</td><td>${advisor(c.advisorId)?.name||""}</td><td class="status-cell"><span class="status ${firstStatus.cls}">${firstStatus.label}</span></td><td class="status-cell"><span class="status ${finalStatus.cls}">${finalStatus.label}</span></td><td>${c.status}</td><td>${money(financeExpectedIncome(c))}</td><td>${money(e.gp)}</td>`;
   tr.onclick=()=>openProject(c.id);$("customerRows").appendChild(tr);
  });
 }
@@ -1332,7 +1332,7 @@ function renderFinanceCash(){
 const FIN_COSTS=[['desoha','DESOHA'],['accomponents','AC-Komponenten'],['dcmontage','DC-Montage'],['acmontage','AC-Montage'],['project','Projektierung / Kleinmaterial'],['custom','Weitere Kosten'],['other','Sonstiges']];
 
 function financeExpectedIncome(c){
-  return Math.max(0,n(c.actual.vk)+n(c.actual.upsale));
+  return economy(c,"actual").vk;
 }
 function financeCostValue(c,k){const a=n(c.actual[k]); return a>0?a:n(c.calc[k]);}
 function financeExpectedExpenses(c){return FIN_COSTS.reduce((s,[k])=>s+financeCostValue(c,k),0);}

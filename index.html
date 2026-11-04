@@ -1336,12 +1336,12 @@ function renderFinanceCash(){
  document.getElementById('finForecastExpenses').textContent=money(forecastExpenses);
  document.getElementById('finForecastBalance').textContent=money(forecastIncome-forecastExpenses);
  // Bereits gezahlte Netto-Provisionen plus die noch zu erwartenden Netto-Provisionen.
- // Pro Berater nur die Differenz zur höheren kalkulierten/finalen Gesamtprovision
+ // Pro Berater nur die Differenz zur kalkulierten Gesamtprovision
  // addieren, damit Abschlagszahlungen nicht doppelt abgezogen werden.
  let paidCommissions=0,openCommissions=0;
  state.customers.filter(periodMatches).forEach(c=>commission(c).forEach(p=>{
    const paid=Math.max(0,n(p.paidNet));
-   const expected=Math.max(0,n(p.netCalc),n(p.netFinal));
+   const expected=Math.max(0,n(p.netCalc));
    paidCommissions+=paid;
    openCommissions+=Math.max(0,expected-paid);
  }));

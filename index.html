@@ -621,7 +621,7 @@ tbody tr:hover{background:#f9fbfe!important}
         </div>
         <div class="card">
           <div class="section-head"><h3>Offene Ausgaben</h3><b id="planExpenseTotal">0 €</b></div>
-          <div class="muted">Jede Kostenposition wird einzeln geplant. Bereits bezahlte Teilbeträge sind abgezogen.</div>
+          <div class="muted">Jede noch offene Kostenposition je Kunde wird einzeln und vollständig einem Zahlungsjahr (2026 oder 2027) zugeordnet. Keine Aufteilung von Kostenpositionen. Bereits bezahlte Beträge werden abgezogen.</div>
           <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Kunde / Kostenposition</th><th>Bereits bezahlt</th><th>Noch offen</th><th>Plan 2026</th><th>Plan 2027</th><th>Aktion</th></tr></thead><tbody id="planExpenseRows"></tbody></table></div>
         </div>
         <div id="planStatus" class="muted" role="status"></div>
@@ -1464,7 +1464,7 @@ function financePlanItems(){
 function financePlanKey(item){return item.project_id+'|'+item.item_type+'|'+item.cost_key;}
 function financePlanRow(item){
  const saved=financePaymentPlans.find(p=>financePlanKey(p)===financePlanKey(item));
- const assigned=saved&&saved.amount_2026!==null;
+ const assigned=!!(saved&&saved.amount_2026!==null&&(item.item_type==='income'||Math.abs(n(saved.amount_2026))<0.005||Math.abs(n(saved.amount_2026)-item.open)<0.005));
  const amount2026=assigned?Math.min(item.open,Math.max(0,n(saved.amount_2026))):null;
  const amount2027=assigned?Math.max(0,Math.round((item.open-amount2026)*100)/100):null;
  return {...item,assigned,amount2026,amount2027};
@@ -1482,6 +1482,7 @@ function renderFinancePlanning(){
    const filtered=items.filter(x=>x.item_type===type);
    return filtered.length?filtered.map(x=>{
      const id=financePlanKey(x),safe=financePlanEscape(id),canEdit=cloudRole==='admin';
+     if(type==='expense')return '<tr data-plan-key="'+safe+'"><td>'+financePlanEscape(x.name)+'</td><td>'+money(x.paid)+'</td><td><b>'+money(x.open)+'</b></td><td colspan="2"><select class="plan-expense-year" aria-label="Geplantes Zahlungsjahr" '+(canEdit?'':'disabled')+'><option value="" '+(!x.assigned?'selected':'')+'>Jahr auswählen</option><option value="2026" '+(x.assigned&&x.amount2026>0?'selected':'')+'>2026 – vollständiger Restbetrag</option><option value="2027" '+(x.assigned&&x.amount2026===0?'selected':'')+'>2027 – vollständiger Restbetrag</option></select></td><td><button type="button" class="btn primary plan-save" '+(canEdit?'':'disabled')+'>Speichern</button></td></tr>';
      return '<tr data-plan-key="'+safe+'"><td>'+financePlanEscape(x.name)+'</td><td>'+money(x.paid)+'</td><td><b>'+money(x.open)+'</b></td><td>'+
        '<input type="number" min="0" max="'+x.open+'" step="0.01" style="min-width:115px;width:130px" class="plan-amount" aria-label="Geplanter Betrag 2026" placeholder="Nicht geplant" value="'+(x.assigned?x.amount2026:'')+'" '+(canEdit?'':'disabled')+'></td><td class="plan-remainder">'+(x.assigned?money(x.amount2027):'Nicht geplant')+'</td><td style="white-space:nowrap">'+
        '<button type="button" class="btn ghost plan-all" data-year="2026" '+(canEdit?'':'disabled')+'>Alles 2026</button> '+
@@ -1503,13 +1504,20 @@ document.addEventListener('click',async e=>{
  const tr=button.closest('tr[data-plan-key]');if(!tr)return;
  const item=financePlanItems().find(x=>financePlanKey(x)===tr.dataset.planKey);
  if(!item||cloudRole!=='admin')return;
- const input=tr.querySelector('.plan-amount');
- if(button.classList.contains('plan-all'))input.value=button.dataset.year==='2026'?String(item.open):'0';
- const raw=input.value.trim();
- if(raw===''||!Number.isFinite(Number(raw))||Number(raw)<0||Number(raw)>item.open+0.001){
-   alert('Bitte einen Betrag zwischen 0 und dem aktuell offenen Restbetrag eingeben.');return;
+ let amount;
+ if(item.item_type==='expense'){
+   const year=tr.querySelector('.plan-expense-year')?.value;
+   if(year!=='2026'&&year!=='2027'){alert('Bitte für diese offene Kostenposition 2026 oder 2027 auswählen.');return;}
+   amount=year==='2026'?item.open:0;
+ }else{
+   const input=tr.querySelector('.plan-amount');
+   if(button.classList.contains('plan-all'))input.value=button.dataset.year==='2026'?String(item.open):'0';
+   const raw=input.value.trim();
+   if(raw===''||!Number.isFinite(Number(raw))||Number(raw)<0||Number(raw)>item.open+0.001){
+     alert('Bitte einen Betrag zwischen 0 und dem aktuell offenen Restbetrag eingeben.');return;
+   }
+   amount=Math.round(Number(raw)*100)/100;
  }
- const amount=Math.round(Number(raw)*100)/100;
  button.disabled=true;
  const status=document.getElementById('planStatus');
  status.textContent='Zahlungsplanung wird gespeichert …';

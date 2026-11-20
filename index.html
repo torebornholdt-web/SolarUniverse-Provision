@@ -963,6 +963,20 @@ let currentId=state.customers[0]?.id||null;
 const saveLocal=()=>localStorage.setItem("su_provision_app",JSON.stringify(state));
 let save=saveLocal;
 const advisor=id=>state.advisors.find(a=>a.id===id);
+function customerAdvisorCode(c){
+ const name=String(advisor(c.advisorId)?.name||'').trim();
+ const normalized=name.toLocaleLowerCase('de').replace(/[^a-zäöüß0-9]+/g,' ');
+ if(!normalized)return '';
+ if(normalized.includes('wojsa')||normalized==='sw')return 'SW';
+ if(normalized.includes('schwindt')||normalized==='ts')return 'TS';
+ if(normalized.includes('geschäftsführung')||normalized.includes('geschaeftsfuehrung')||normalized==='gf')return 'GF';
+ if(normalized.includes('bornholdt')||normalized==='tb')return 'TB';
+ if(normalized==='ss'||/^s[ .-]*s$/.test(normalized))return 'SS';
+ if(normalized.includes('enwi'))return 'ENWI';
+ const parts=name.split(/\s+/).filter(Boolean);
+ return parts.length>=2?parts.map(p=>p[0].toLocaleUpperCase('de')).join(''):name.toLocaleUpperCase('de').slice(0,3);
+}
+
 
 function hierarchy(advisorId){
  let cur=advisor(advisorId),last=cur?.stage||0,out=[],guard=0;
@@ -1035,7 +1049,7 @@ function renderCustomers(){
   const completed=String(c.status||"").trim().toLowerCase()==="abgeschlossen";
   const firstPaid=provisionOverviewStatus(c,"first").cls==="paid";
   const customerMarker=completed?'<span class="completion-dot" title="Projekt abgeschlossen"></span>':(firstPaid?'<span class="payout80-dot" title="80 % Provision ausgezahlt">80</span>':'<span class="completion-dot-placeholder"></span>');
-  tr.innerHTML=`<td><div class="customer-name-with-dot">${customerMarker}<b>${c.customer}</b></div></td><td>${c.projectName}</td><td>${formatDateDE(c.date)}</td><td>${advisor(c.advisorId)?.name||""}</td><td class="status-cell"><span class="status ${firstStatus.cls}">${firstStatus.label}</span></td><td class="status-cell"><span class="status ${finalStatus.cls}">${finalStatus.label}</span></td><td>${c.status}</td><td>${money(financeExpectedIncome(c))}</td><td>${money(e.gp)}</td>`;
+  tr.innerHTML=`<td><div class="customer-name-with-dot">${customerMarker}<b>${customerAdvisorCode(c)?`(${customerAdvisorCode(c)}) `:""}${c.customer}</b></div></td><td>${c.projectName}</td><td>${formatDateDE(c.date)}</td><td>${advisor(c.advisorId)?.name||""}</td><td class="status-cell"><span class="status ${firstStatus.cls}">${firstStatus.label}</span></td><td class="status-cell"><span class="status ${finalStatus.cls}">${finalStatus.label}</span></td><td>${c.status}</td><td>${money(financeExpectedIncome(c))}</td><td>${money(e.gp)}</td>`;
   tr.onclick=()=>openProject(c.id);$("customerRows").appendChild(tr);
  });
 }

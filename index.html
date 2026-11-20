@@ -519,6 +519,7 @@ tbody tr:hover{background:#f9fbfe!important}
       <div class="tabs" id="financeSubTabs">
         <button class="tab active" type="button" data-finance-tab="overview">Finanzübersicht Baustellen</button>
         <button class="tab" type="button" data-finance-tab="bookings">Buchungen nachbearbeiten</button>
+        <button class="tab" type="button" data-finance-tab="planning">Offene Posten &amp; Zahlungsplanung</button>
       </div>
       <div id="financeOverviewPanel" class="tab-panel active">
       <div class="card" style="margin-bottom:16px">
@@ -597,6 +598,33 @@ tbody tr:hover{background:#f9fbfe!important}
           </table></div>
         </div>
       </div>
+      </div>
+      <div id="financePlanningPanel" class="tab-panel">
+        <div class="card">
+          <h2>Offene Posten &amp; Zahlungsplanung 2026 / 2027</h2>
+          <div class="muted">Nur tatsächlich noch offene Restbeträge, einschließlich bereits geleisteter Teilzahlungen. Planung ist von Buchungen und Zahlungsdaten vollständig getrennt. Nicht zugewiesene Posten werden gesondert ausgewiesen.</div>
+          <div class="metric-grid" style="margin-top:14px">
+            <div class="metric card fin-highlight-income"><span>Offene Kundenzahlungen</span><b id="planOpenIncome">0 €</b></div>
+            <div class="metric card fin-highlight-expense"><span>Offene Ausgaben</span><b id="planOpenExpense">0 €</b></div>
+            <div class="metric card"><span>Offene Posten ohne Planung</span><b id="planUnassigned">0 €</b></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Geplante Geldbewegungen</h3>
+          <div class="table-wrap"><table><thead><tr><th>Jahr</th><th>Geplante Eingänge</th><th>Geplante Ausgaben</th><th>Liquiditätsdifferenz</th></tr></thead><tbody id="planSummaryRows"></tbody></table></div>
+          <div class="muted" style="margin-top:10px">Dies ist eine Liquiditätsplanung, keine steuerliche Gewinnermittlung. Nicht zugewiesene Beträge sind in den Jahreswerten nicht enthalten.</div>
+        </div>
+        <div class="card">
+          <div class="section-head"><h3>Offene Kundenzahlungen</h3><b id="planIncomeTotal">0 €</b></div>
+          <div class="muted">Der bereits eingegangene Betrag wird abgezogen. Tragen Sie den gewünschten Teilbetrag für 2026 ein; der Rest wird automatisch 2027 zugeordnet. Mit „Alles 2026“ oder „Alles 2027“ können Sie direkt zuordnen.</div>
+          <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Kunde / Projekt</th><th>Bereits erhalten</th><th>Noch offen</th><th>Plan 2026</th><th>Plan 2027</th><th>Aktion</th></tr></thead><tbody id="planIncomeRows"></tbody></table></div>
+        </div>
+        <div class="card">
+          <div class="section-head"><h3>Offene Ausgaben</h3><b id="planExpenseTotal">0 €</b></div>
+          <div class="muted">Jede Kostenposition wird einzeln geplant. Bereits bezahlte Teilbeträge sind abgezogen.</div>
+          <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Kunde / Kostenposition</th><th>Bereits bezahlt</th><th>Noch offen</th><th>Plan 2026</th><th>Plan 2027</th><th>Aktion</th></tr></thead><tbody id="planExpenseRows"></tbody></table></div>
+        </div>
+        <div id="planStatus" class="muted" role="status"></div>
       </div>
     </section>
 
@@ -1322,7 +1350,7 @@ renderAll();
 
 
 <script id="finance-v12-4">
-let financeCustomerPayments=[]; let financeExpensePayments=[]; let financeCostProjectId=null; let financePaymentsProjectId=null;
+let financeCustomerPayments=[]; let financeExpensePayments=[]; let financePaymentPlans=[]; let financeCostProjectId=null; let financePaymentsProjectId=null;
 function financeCashPeriodMatches(date){
  const d=String(date||'');
  return periodFilter==='all'||d.startsWith(periodFilter);
@@ -1334,6 +1362,8 @@ document.addEventListener('click',e=>{
  document.querySelectorAll('#financeSubTabs [data-finance-tab]').forEach(x=>x.classList.toggle('active',x===btn));
  document.getElementById('financeOverviewPanel').classList.toggle('active',key==='overview');
  document.getElementById('financeBookingsPanel').classList.toggle('active',key==='bookings');
+ document.getElementById('financePlanningPanel').classList.toggle('active',key==='planning');
+ if(key==='planning')renderFinancePlanning();
 });
 function renderFinanceCash(){
  const projects=new Map(state.customers.map(c=>[c.id,c]));
@@ -1389,7 +1419,7 @@ function financeCostValue(c,k){const a=n(c.actual[k]); return a>0?a:n(c.calc[k])
 function financeExpectedExpenses(c){return FIN_COSTS.reduce((s,[k])=>s+financeCostValue(c,k),0);}
 function financeReceived(id){return financeCustomerPayments.filter(x=>x.project_id===id).reduce((s,x)=>s+n(x.amount),0);}
 function financeExpensePaid(id){return financeExpensePayments.filter(x=>x.project_id===id).reduce((s,x)=>s+n(x.paid_amount),0);}
-function financeCostPaid(id,k){return n(financeExpensePayments.find(x=>x.project_id===id&&x.cost_key===k)?.paid_amount);}
+function financeCostPaid(id,k){return financeExpensePayments.filter(x=>x.project_id===id&&x.cost_key===k).reduce((sum,x)=>sum+n(x.paid_amount),0);}
 function financeCostLabel(c,k,label){
   if(k==='custom' && c.customCostLabel) return c.customCostLabel;
   if(k==='other' && c.otherCostLabel) return c.otherCostLabel;
@@ -1398,19 +1428,108 @@ function financeCostLabel(c,k,label){
 
 async function loadFinanceData(){
   if(!cloudFinanceAccess)return;
-  const [a,b]=await Promise.all([
+  const [a,b,p]=await Promise.all([
     cloud.from('project_customer_payments').select('*').order('payment_date'),
-    cloud.from('project_expense_payments').select('*')
+    cloud.from('project_expense_payments').select('*'),
+    cloud.from('finance_open_payment_plans').select('*')
   ]);
   if(a.error)throw a.error;
   if(b.error)throw b.error;
+  if(p.error)throw p.error;
+  financePaymentPlans=p.data||[];
   financeCustomerPayments=a.data||[];
   financeExpensePayments=b.data||[];
   renderFinance();
   renderFinanceCash();
+  renderFinancePlanning();
   if(financeCostProjectId) renderFinanceCostModal(financeCostProjectId);
   if(financePaymentsProjectId) renderFinancePaymentsModal(financePaymentsProjectId);
 }
+
+
+function financePlanItems(){
+ const items=[];
+ state.customers.forEach(c=>{
+   if(String(c.status||'').trim().toLowerCase()==='storniert')return;
+   const received=financeReceived(c.id),income=Math.max(0,Math.round((financeExpectedIncome(c)-received)*100)/100);
+   if(income>0.005)items.push({project_id:c.id,item_type:'income',cost_key:'',name:c.customer+' – '+(c.projectName||''),paid:received,open:income});
+   FIN_COSTS.forEach(([k,label])=>{
+     const paid=financeCostPaid(c.id,k),open=Math.max(0,Math.round((financeCostValue(c,k)-paid)*100)/100);
+     if(open>0.005)items.push({project_id:c.id,item_type:'expense',cost_key:k,name:c.customer+' – '+financeCostLabel(c,k,label),paid,open});
+   });
+ });
+ return items;
+}
+function financePlanKey(item){return item.project_id+'|'+item.item_type+'|'+item.cost_key;}
+function financePlanRow(item){
+ const saved=financePaymentPlans.find(p=>financePlanKey(p)===financePlanKey(item));
+ const assigned=saved&&saved.amount_2026!==null;
+ const amount2026=assigned?Math.min(item.open,Math.max(0,n(saved.amount_2026))):null;
+ const amount2027=assigned?Math.max(0,Math.round((item.open-amount2026)*100)/100):null;
+ return {...item,assigned,amount2026,amount2027};
+}
+function renderFinancePlanning(){
+ const incomeBody=document.getElementById('planIncomeRows');if(!incomeBody)return;
+ const items=financePlanItems().map(financePlanRow);
+ const totals={income:0,expense:0,unassigned:0,y26:{income:0,expense:0},y27:{income:0,expense:0}};
+ items.forEach(x=>{
+   totals[x.item_type]+=x.open;
+   if(!x.assigned)totals.unassigned+=x.open;
+   else{totals.y26[x.item_type]+=x.amount2026;totals.y27[x.item_type]+=x.amount2027;}
+ });
+ const makeRows=type=>{
+   const filtered=items.filter(x=>x.item_type===type);
+   return filtered.length?filtered.map(x=>{
+     const id=financePlanKey(x),safe=esc(id),canEdit=cloudRole==='admin';
+     return '<tr data-plan-key="'+safe+'"><td>'+esc(x.name)+'</td><td>'+money(x.paid)+'</td><td><b>'+money(x.open)+'</b></td><td>'+
+       '<input type="number" min="0" max="'+x.open+'" step="0.01" style="min-width:115px;width:130px" class="plan-amount" aria-label="Geplanter Betrag 2026" placeholder="Nicht geplant" value="'+(x.assigned?x.amount2026:'')+'" '+(canEdit?'':'disabled')+'></td><td class="plan-remainder">'+(x.assigned?money(x.amount2027):'Nicht geplant')+'</td><td style="white-space:nowrap">'+
+       '<button type="button" class="btn ghost plan-all" data-year="2026" '+(canEdit?'':'disabled')+'>Alles 2026</button> '+
+       '<button type="button" class="btn ghost plan-all" data-year="2027" '+(canEdit?'':'disabled')+'>Alles 2027</button> '+
+       '<button type="button" class="btn primary plan-save" '+(canEdit?'':'disabled')+'>Speichern</button></td></tr>';
+   }).join(''):'<tr><td colspan="6" class="muted">Keine offenen Posten vorhanden.</td></tr>';
+ };
+ incomeBody.innerHTML=makeRows('income');
+ document.getElementById('planExpenseRows').innerHTML=makeRows('expense');
+ document.getElementById('planOpenIncome').textContent=money(totals.income);
+ document.getElementById('planOpenExpense').textContent=money(totals.expense);
+ document.getElementById('planUnassigned').textContent=money(totals.unassigned);
+ document.getElementById('planIncomeTotal').textContent=money(totals.income);
+ document.getElementById('planExpenseTotal').textContent=money(totals.expense);
+ document.getElementById('planSummaryRows').innerHTML=[['2026',totals.y26],['2027',totals.y27]].map(([year,t])=>'<tr><td><b>'+year+'</b></td><td class="positive">'+money(t.income)+'</td><td class="negative">'+money(t.expense)+'</td><td><b>'+money(t.income-t.expense)+'</b></td></tr>').join('');
+}
+document.addEventListener('click',async e=>{
+ const button=e.target.closest('.plan-save,.plan-all');if(!button)return;
+ const tr=button.closest('tr[data-plan-key]');if(!tr)return;
+ const item=financePlanItems().find(x=>financePlanKey(x)===tr.dataset.planKey);
+ if(!item||cloudRole!=='admin')return;
+ const input=tr.querySelector('.plan-amount');
+ if(button.classList.contains('plan-all'))input.value=button.dataset.year==='2026'?String(item.open):'0';
+ const raw=input.value.trim();
+ if(raw===''||!Number.isFinite(Number(raw))||Number(raw)<0||Number(raw)>item.open+0.001){
+   alert('Bitte einen Betrag zwischen 0 und dem aktuell offenen Restbetrag eingeben.');return;
+ }
+ const amount=Math.round(Number(raw)*100)/100;
+ button.disabled=true;
+ const status=document.getElementById('planStatus');
+ status.textContent='Zahlungsplanung wird gespeichert …';
+ try{
+   const payload={project_id:item.project_id,item_type:item.item_type,cost_key:item.cost_key,amount_2026:amount,updated_at:new Date().toISOString()};
+   const result=await cloud.from('finance_open_payment_plans').upsert(payload,{onConflict:'project_id,item_type,cost_key'}).select('project_id');
+   if(result.error)throw result.error;
+   if(!result.data?.length)throw new Error('Keine Speicherung bestätigt. Bitte Berechtigung prüfen.');
+   const idx=financePaymentPlans.findIndex(p=>financePlanKey(p)===financePlanKey(item));
+   if(idx>=0)financePaymentPlans[idx]=payload;else financePaymentPlans.push(payload);
+   renderFinancePlanning();status.textContent='Planung gespeichert. Tatsächliche Buchungen wurden nicht verändert.';
+ }catch(error){status.textContent='Speichern fehlgeschlagen: '+error.message;alert(status.textContent);}
+ finally{button.disabled=false;}
+});
+document.addEventListener('input',e=>{
+ if(!e.target.matches('.plan-amount'))return;
+ const tr=e.target.closest('tr[data-plan-key]'),item=financePlanItems().find(x=>financePlanKey(x)===tr.dataset.planKey);
+ if(!item)return;
+ const v=e.target.value.trim(),valid=v!==''&&Number.isFinite(Number(v))&&Number(v)>=0&&Number(v)<=item.open;
+ tr.querySelector('.plan-remainder').textContent=valid?money(item.open-Number(v)):'Nicht geplant';
+});
 
 function renderFinance(){
   if(!cloudFinanceAccess)return;

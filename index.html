@@ -1447,6 +1447,7 @@ async function loadFinanceData(){
 }
 
 
+function financePlanEscape(x){return String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function financePlanItems(){
  const items=[];
  state.customers.forEach(c=>{
@@ -1480,7 +1481,7 @@ function renderFinancePlanning(){
  const makeRows=type=>{
    const filtered=items.filter(x=>x.item_type===type);
    return filtered.length?filtered.map(x=>{
-     const id=financePlanKey(x),safe=esc(id),canEdit=cloudRole==='admin';
+     const id=financePlanKey(x),safe=financePlanEscape(id),canEdit=cloudRole==='admin';
      return '<tr data-plan-key="'+safe+'"><td>'+esc(x.name)+'</td><td>'+money(x.paid)+'</td><td><b>'+money(x.open)+'</b></td><td>'+
        '<input type="number" min="0" max="'+x.open+'" step="0.01" style="min-width:115px;width:130px" class="plan-amount" aria-label="Geplanter Betrag 2026" placeholder="Nicht geplant" value="'+(x.assigned?x.amount2026:'')+'" '+(canEdit?'':'disabled')+'></td><td class="plan-remainder">'+(x.assigned?money(x.amount2027):'Nicht geplant')+'</td><td style="white-space:nowrap">'+
        '<button type="button" class="btn ghost plan-all" data-year="2026" '+(canEdit?'':'disabled')+'>Alles 2026</button> '+
